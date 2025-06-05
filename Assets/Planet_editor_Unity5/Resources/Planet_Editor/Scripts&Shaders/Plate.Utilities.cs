@@ -12,7 +12,7 @@ namespace Orogeny.Plates {
 
     public partial class Plate {
         public static float continentalCrustThickness = 0.5f;
-        public static float hotCrustThicknessBonus = 0.4f;
+        public static float hotCrustThicknessBonus = 0.2f;
         public static float framesToCool = 10000;
 
         public static float seaFloorRadius = 25;

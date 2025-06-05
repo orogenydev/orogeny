@@ -424,26 +424,43 @@ namespace Orogeny.Plates {
         }
 
         public void MORBingTime() {
-            var testsPerCycle = 10;
             Vector2[] uv2 = mesh.uv2;
             ClearEvents(eventsMORB);
  
             var newMORBS = false;
-            for (int i = 0; i < testsPerCycle; i++) {
-                var pIndex = rand.Next(perimeter.Count);
-                var p = perimeter[pIndex];
+            // Iterate through a copy of the perimeter list as it might be modified during the loop
+            List<int> currentPerimeter = new List<int>(perimeter);
 
-                foreach (var n in neighbors[p]) {
+            foreach (var p in currentPerimeter) {
+                // Check if p is still a perimeter vertex, as it might have been removed by previous iterations
+                if (!perimeter.Contains(p)) {
+                    continue;
+                }
+
+                // It's important to collect neighbors first, as modifying plateVertices and perimeter
+                // inside the loop might affect subsequent neighbor checks or IsVirtual status.
+                List<int> neighborsOfP = new List<int>(neighbors[p]);
+
+                foreach (var n in neighborsOfP) {
                     if (IsVirtual(plateVertices[n]) &&
                         IsOnlyVirtualAtPoint(plateVertices[n]) &&
-                        ValidNeighborCount(n) > 1) {
+                        ValidNeighborCount(n) > 1) { // Assuming ValidNeighborCount refers to real neighbors
 
                         plateVertices[n] = plateVertices[n].normalized * (Plate.seaFloorRadius + Plate.hotCrustThicknessBonus);
                         uv2[n] = new Vector2(Time.frameCount, Time.frameCount);
-                        realVertices.Add(n);
-                        AddToPerimeter(n);
-                        CheckNeighborPerimeterStatus(n);
                         
+                        if (!realVertices.Contains(n)) { // Ensure we don't add duplicates if logic allows
+                            realVertices.Add(n);
+                        }
+
+                        AddToPerimeter(n); // This should add n to the main perimeter list
+                                           // and remove it from virtual status implicitly or explicitly.
+
+                        // After adding n, n is now a real vertex.
+                        // We need to update the perimeter status of its neighbors, including p.
+                        CheckNeighborPerimeterStatus(n);
+                        CheckPerimeterness(p); // p might no longer be a perimeter vertex if all its virtual neighbors are filled.
+
                         eventsMORB.Add(CreateEventMarker(gameObject, new Color(1.0f, 0f, 0f, 0.5f), plateVertices[n], 0.75f, "EventMarkers", "EventMORB"));
                         newMORBS = true;
                     }
