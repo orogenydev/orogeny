@@ -1,0 +1,101 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: planet_no_poles
+  m_Shader: {fileID: 4800000, guid: 47d0d5809e8696146bf69bd6392c2bdd, type: 3}
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 5
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _BumpMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _BumpMap2:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Cube:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DirtTex:
+        m_Texture: {fileID: 2800000, guid: 7ae7b33116c4043eabbb6b780c0b7479, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NoiseMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex0:
+        m_Texture: {fileID: 2800000, guid: 2155fe938a222d643a9b1bfec07fa19f, type: 3}
+        m_Scale: {x: 7, y: 7}
+        m_Offset: {x: 0, y: 0}
+    - _Tex1:
+        m_Texture: {fileID: 2800000, guid: 61657b6b20f94ad41b68bdc42afa9c14, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex2:
+        m_Texture: {fileID: 2800000, guid: 38c63627e633f8741b771c35699b383c, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex3:
+        m_Texture: {fileID: 2800000, guid: 28cc2313b51b52640a38810a9c16450f, type: 3}
+        m_Scale: {x: 7, y: 7}
+        m_Offset: {x: 0, y: 0}
+    - _Tex4:
+        m_Texture: {fileID: 2800000, guid: a58419528cd8f6d40be3868da5566f9a, type: 3}
+        m_Scale: {x: 20, y: 20}
+        m_Offset: {x: 0, y: 0}
+    - _Tex5:
+        m_Texture: {fileID: 2800000, guid: ee3ed3548ae9ec04db83bfc35be79673, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex6:
+        m_Texture: {fileID: 2800000, guid: ee3ed3548ae9ec04db83bfc35be79673, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _Ambient: 0
+    - _Cycle: 1
+    - _DirtBlendHeight: 2
+    - _Falloff: 5
+    - _FalloffPlanet: 5
+    - _GroundHeight: -17.16
+    - _Radius: 1
+    - _Shininess: 0.7
+    - _Size: 1
+    - _Speed: 0.05
+    - _Transparency: 15
+    - _TransparencyPlanet: 1
+    - _WireframeWidth: 0.05
+    m_Colors:
+    - _AtmoColor: {r: 0.5, g: 0.5, b: 1, a: 1}
+    - _Blend0to1and1to2: {r: 22.4, g: 24, b: 24.2, a: 24.4}
+    - _Blend2to3and3to4: {r: 24.4, g: 24.8, b: 26, a: 27}
+    - _Blend4to5and5to6: {r: 27, g: 28, b: 28, a: 40}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
+    - _Emission: {r: 0, g: 0, b: 0, a: 0}
+    - _ReflectColor: {r: 1, g: 1, b: 1, a: 0.5}
+    - _SpecColor: {r: 1, g: 1, b: 1, a: 0}
+    - _WireframeBackColour: {r: 0.5, g: 0.5, b: 0.5, a: 1}
+    - _WireframeFrontColour: {r: 1, g: 1, b: 1, a: 1}
+  m_BuildTextureStacks: []

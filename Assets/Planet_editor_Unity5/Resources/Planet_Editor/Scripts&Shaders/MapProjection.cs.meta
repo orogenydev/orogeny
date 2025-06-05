@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: b57ee79d808c3f343b76a9d5b70d573a
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - planet: {instanceID: 0}
+  - renderTexture: {fileID: 8400000, guid: 26a027b55b4cb2f498d9a277dae66717, type: 2}
+  - renderer: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

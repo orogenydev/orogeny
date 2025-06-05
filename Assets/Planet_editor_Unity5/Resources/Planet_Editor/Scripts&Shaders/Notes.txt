@@ -1,0 +1,101 @@
+Plate creation:
+    Initialize
+        AddTerrainToTheTerrane
+            Sets elevation based on is continental or not, and distance for central relief
+            Adds this node to wavefrontVertices
+            Uses mesh.colors to prevent adding a node twice
+            Adds node to true in includedVertices
+    ExpandCrust
+        Goes through neighbors of wavefrontVertices to add them to the terrain
+    Finalize
+        Copies the mesh
+        Culls the mesh
+            Goes through every triangle
+            If every vertice in the triangle is in goodVertices, keep it
+            RemoveUnusedVertices
+                Get rid of vertices not used by any of the remaining triangles
+
+Complete reset of MORBing, this sucks
+
+Vertex states:
+    Real (continental)
+    Real (oceanic)
+    Subducted
+    Virtual
+
+Problem:
+    How to keep virtual vertices around without it messing up all the raycasting tricks?
+    What if their elevation was way, way low? Then all states would be a function of elevation.
+    Above radius + continentalCrustThickness / 2.0f: continental
+    Above radius: oceanic
+    Above meltingAltitude: subducted
+    Everything else: virtual
+
+Changes:
+    No longer cull anything
+    No longer trim subduction
+    Propagation stops when it hits virtual
+    All raycasting needs to check if the elevation is under meltingAltitude, ignore if so
+
+    Need to bring back some of CullMesh and includedVertices, because they're how the different Plates know which
+    vertices to be part of themselves
+
+New MORBing:
+    If the plate has moved, check all neighbors of perimeter vertices
+    If it is virtual, check to see if it hits any real plate section
+    If not, make it real by setting its elevation to radius, reset heat continentalCrustThickness
+
+Long term:
+    Deal with collision crumpling within this new paradigm
+
+Performance hacks:
+    Keep a list of all non-virtual vertices, to reduce the amount of wasted iterations over them
+    Turn this and perimeter into dictionaries
+    FPS when all off: 220
+    Turning on single features:
+        Render terrain: 12
+            Huge inefficiencies in the oceanic crust heat inflation system
+            Stop doing that in display!
+            Now 46!
+        Tectonics: 20
+        Collision check: 18
+        Clear subduction: 117
+        Volcanism: 80
+        MORB: 210
+    DrawGizmos still taking a decent amount of time even when nothing is being rendered!
+    GC.Collect and CopyChannels usually biggest part by far
+    Clouds.Update?! (Never significant, but wtf)
+
+    Spead tectonics over multiple frames? It's the only thing really slowing down the main functions.
+    Create GameObjects for perimeter points, collisions, magmas and MORB markers, if needed
+
+    Takes weirdly long for MORBs and collisions to start happening if I set the collider mesh immediately
+
+MORB problem:
+    Two happening at the same time, overlapping?
+        Would be covered by the collision exemption, but sure would be nice to understand better
+        Was this due to incomplete mesh updating (bounds, etc) before and fixed now anyway?
+    Vertices aren't being removed from perimeter status when superceded
+    Definitely a problem: can find places where a new vertex should go, but automatically
+    connecting it to all real neighbors causes a collision
+        Do a raycast check halfway along each proposed new connection?
+        Exempt freshly made crust from collision checks? By definition, they should be moving apart...
+    Currently can add vertices with only a single connection back to the mesh
+        Require proposed MORB vertices to have >1 good neighbor
+
+Annoyances:
+    * Get it to render uplift before running
+    * Add event markers to the inset map
+        Done, but at what cost?
+    * Add current lat/lon to display
+    * Rotate with mouse
+    Clean up subduction/collision events and markers
+    * Get rid of PlateUtilities, just make it part of the Plate class
+    Display issues:
+        Can't see a plate mesh through another mesh
+        They disappear oddly when viewed from the other side
+
+    Subduction problems:
+        Whole plate is lowering, not the subducting edge
+        Add nextvertex debug visualization back to see what is going on
+            Using Gizmos, so they actually always show

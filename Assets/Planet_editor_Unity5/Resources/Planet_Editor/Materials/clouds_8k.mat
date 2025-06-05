@@ -1,0 +1,88 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 6
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: clouds_8k
+  m_Shader: {fileID: 4800000, guid: b5ad02af61f76434c9923863e1a1930a, type: 3}
+  m_ShaderKeywords: 
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _AlphaMap:
+        m_Texture: {fileID: 2800000, guid: f6f5fef96322458438b80af9d3b99903, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _BumpMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: 929f0ad9286f23e48bdc1e5adc0d5032, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0.5, y: 0}
+    - _NoiseTex:
+        m_Texture: {fileID: 2800000, guid: f6f5fef96322458438b80af9d3b99903, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _ParallaxMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex0:
+        m_Texture: {fileID: 2800000, guid: 929f0ad9286f23e48bdc1e5adc0d5032, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex1:
+        m_Texture: {fileID: 2800000, guid: f6f5fef96322458438b80af9d3b99903, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex2:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex3:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex4:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex5:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _Tex6:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Floats:
+    - _Cutoff: 0.5
+    - _Falloff: 3
+    - _FalloffPlanet: 0
+    - _InvFade: 1
+    - _Parallax: 0.02
+    - _Shininess: 0.7
+    - _Size: 0.02
+    - _Transparency: 100
+    - _TransparencyPlanet: 1
+    m_Colors:
+    - _AtmoColor: {r: 0.5, g: 0.5, b: 1, a: 1}
+    - _Blend0to1and1to2: {r: 0, g: 1, b: 2, a: 3}
+    - _Blend2to3and3to4: {r: 0, g: 1, b: 2, a: 3}
+    - _Blend4to5and5to6: {r: 0, g: 1, b: 2, a: 3}
+    - _Color: {r: 0.7647059, g: 0.7647059, b: 0.7647059, a: 1}
+    - _Emission: {r: 0, g: 0, b: 0, a: 0}
+    - _SpecColor: {r: 1, g: 1, b: 1, a: 1}
+    - _TintColor: {r: 0.5, g: 0.5, b: 0.5, a: 0.5}

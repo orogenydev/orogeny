@@ -1,0 +1,51 @@
+Thanks for purchasing this asset!
+
+Let's see what we have in a demo scene:
+
+1. Each planet consists of 4 elements:
+ - Planet mesh with planet shader and 7 blended textures
+ - Water sphere with water shader
+ - Glow sphere(special glow shader)
+ - Clouds sphere with clouds shader and script that makes clouds texture look dynamic.
+2. Main camera has one child (creating colliders notification) and 2 scripts:
+ - Sculpt - main sculpting script with 6 main vars:
+	1) Brush transform - brush projector 
+	2) Brush texture down
+	3) Brush texture up
+	4) Realistic shader(the one that works with lights)
+	5) Cartoon shader
+	6) Planet transform
+ - Planet_control - script that defines planet size and is used to rotate camera around planet. Has 2 main vars:
+	1) Planet transform
+	2) Size - basically, planet scale how big you want your planet to be. Unity scale high poly objects very slow, 
+	   so it's much better to do it only once. Basic planet radius is 25. Use this scale in order to make the planet bigger. 
+	   You may need to increase light, projector and camera influence zones(range and clipping planes), and light position.
+3. Brush - simple projector.
+4. Light with lens flare as a child.
+--------------------------------------------------
+Shaders:
+1. Planet shaders:
+ - height_based - cartoon planet shader. Unlit shader type.
+ - height_based_w_light - relistic planet shader, that works with point and directional lights.
+2. Atmosphere - clouds shader. Works with point and directional lights.
+3. Glow shader - shader based on Unity wiki glow shader.
+4. Water shaders:
+ - water_cartoon shader - water is visible from any angle
+ - water_realistic shader - water is invisible on the unlit part of the planet
+
+---------------------------------------------------
+
+Prefab_saver script. It's located in Editor. 
+This scripts create a "Create a prefab from selected" btn in gameobject menu.
+So, you choose your planet  in editor hierarchy, then press this button and you get your planet prefab with mesh and all materials
+and current settings save in savedMesh folder!
+---------------------------------------------------
+
+Planets resolution:
+ - big: 25k vertices
+ - medium: 6k vertices
+ - big: 2.5k vertices
+if you have any problems, please feel free to ask.
+e-mail: stanislavdol@gmail.com
+
+Good luck with your projects!
