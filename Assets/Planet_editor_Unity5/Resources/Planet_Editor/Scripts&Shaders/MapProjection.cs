@@ -37,7 +37,7 @@ namespace Orogeny.Maps {
         private IProjection curProjection;
 
         // Default camera position == 0,0 no matter what the coordinate system says
-        private float lonRadOffset = -67 * Mathf.Deg2Rad;
+        private float lonRadOffset = -74 * Mathf.Deg2Rad;
         private float lonRadOffsetDragStart = 0;
         private Vector2 dragOrigin = Vector2.zero;
 
@@ -165,7 +165,7 @@ namespace Orogeny.Maps {
                         commandArray[index % pointsPerDivision] = GetPointRaycast(point, mask);
 
                         commandArray = raycastCommandsWithMarkers[index / pointsPerDivision];
-                        mask = LayerMask.GetMask("Geoid", "EventMarkers");
+                        mask = LayerMask.GetMask("Geoid", "EventMarkers", "PerimeterPoints");
                         commandArray[index % pointsPerDivision] = GetPointRaycast(point, mask);
                     }
                 }
@@ -203,9 +203,16 @@ namespace Orogeny.Maps {
                     var index = curDivision * pointsPerDivision + i;
                     var color = Color.black;
 
-                    if (hit.collider.name == "EventMORB") {
-                        color = Color.red;                        
-                    } else {
+                    if (hit.collider.name == "EventMORB")
+                    {
+                        color = Color.red;
+                    }
+                    else if (hit.collider.name == "Perimeter")
+                    {
+                        color = Color.yellow;
+                    }
+                    else
+                    {
                         // Change pixel value based on point distance to camera
                         // to create a terminator line showing what is visible on the globe
                         var pointDist = (hit.point - cameraPos).magnitude;

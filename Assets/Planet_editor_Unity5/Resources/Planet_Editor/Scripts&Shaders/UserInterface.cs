@@ -68,7 +68,9 @@ namespace Orogeny {
 		private static UnityEngine.UI.Toggle[] breakpointToggles;
 		private static UnityEngine.UI.Toggle[] displayFeatureToggles;
 
-		private int[] lastFrames = new int[5] {0, 0, 0, 0, 0};
+		private static bool[] displayPlateToggles;
+
+		private int[] lastFrames = new int[5] { 0, 0, 0, 0, 0 };
 
 		private bool[] subsystemFeatures;
 		private bool[] breakpoints;
@@ -77,10 +79,10 @@ namespace Orogeny {
 
         private Vector2 dragOrigin = Vector2.zero;
 
-		private float lonOffset = 157;
-		private float lonOffsetBase = 157;
+		private float lonOffset = 164;
+		private float lonOffsetBase = 164;
 
-		void Start() {
+		void Awake() { // Awake so this will be initialized before anything else
 			InitToggles();
 
 			SetPlaying(false);
@@ -210,7 +212,8 @@ namespace Orogeny {
 			playButtonImage.enabled = !value;
 		}
 
- 		private void InitToggles() {
+		private void InitToggles()
+		{
 			subsystemFeatures = new bool[System.Enum.GetNames(typeof(SubsystemFeature)).Length];
 			breakpoints = new bool[System.Enum.GetNames(typeof(Breakpoint)).Length];
 			displayFeatures = new bool[System.Enum.GetNames(typeof(DisplayFeature)).Length];
@@ -222,36 +225,68 @@ namespace Orogeny {
 																	subsystemFeatureToggle5,
 																	subsystemFeatureToggle6 };
 
-			breakpointToggles = new UnityEngine.UI.Toggle[] { breakpointToggle1, 
+			breakpointToggles = new UnityEngine.UI.Toggle[] { breakpointToggle1,
 																breakpointToggle2,
 																breakpointToggle3,
 																breakpointToggle4,
 																breakpointToggle5,
 																breakpointToggle6 };
 
-			displayFeatureToggles = new UnityEngine.UI.Toggle[] { displayFeatureToggle1, 
+			displayFeatureToggles = new UnityEngine.UI.Toggle[] { displayFeatureToggle1,
 																displayFeatureToggle2,
 																displayFeatureToggle3,
 																displayFeatureToggle4,
 																displayFeatureToggle5,
 																displayFeatureToggle6 };
+
+			displayPlateToggles = new bool[] { true, true, true, true, true, true, true, true, true, true };
 		}
 
-		private void CheckToggles() {
-			for (var i = 0; i < subsystemFeatureToggles.Length; i++) {
+		private void CheckToggles()
+		{
+			for (var i = 0; i < subsystemFeatureToggles.Length; i++)
+			{
 				subsystemFeatures[i] = subsystemFeatureToggles[i].isOn;
 			}
 
-			for (var i = 0; i < breakpointToggles.Length; i++) {
+			for (var i = 0; i < breakpointToggles.Length; i++)
+			{
 				breakpoints[i] = breakpointToggles[i].isOn;
 			}
 
-			for (var i = 0; i < displayFeatureToggles.Length; i++) {
+			for (var i = 0; i < displayFeatureToggles.Length; i++)
+			{
 				displayFeatures[i] = displayFeatureToggles[i].isOn;
+			}
+
+			SetAllPlateDisplay(false);
+
+			bool foundPlateSolo = false;
+			KeyCode[] keycodes = new KeyCode[] { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6, KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9, KeyCode.Alpha0 };
+			for (var i = 0; i < keycodes.Length; i++)
+			{
+				if (Input.GetKey(keycodes[i]))
+				{
+					displayPlateToggles[i] = true;
+					foundPlateSolo = true;
+					break;
+				}
+			}
+
+			if (!foundPlateSolo)
+				SetAllPlateDisplay(true);
+		}
+
+		private void SetAllPlateDisplay(bool val)
+		{			
+			for (var i = 0; i < displayPlateToggles.Length; i++)
+			{
+				displayPlateToggles[i] = val;
 			}
 		}
 
-		public bool IsSubsystemFeatureOn(SubsystemFeature rf) {
+		public bool IsSubsystemFeatureOn(SubsystemFeature rf)
+		{
 			return subsystemFeatures[(int)rf];
 		}
 
@@ -263,15 +298,24 @@ namespace Orogeny {
 			return displayFeatures[(int)gf];
 		}
 
-		public void HandleResetButtonClick() {
+		public bool IsDisplayPlateOn(int plate)
+		{
+			if (plate < 0 || plate > 9)
+				return false;
+
+			return displayPlateToggles[plate];
+		}
+
+		public void HandleResetButtonClick()
+		{
 			//Debug.Log("Reset button clicked");
 
 			// Go back to original position
 			// Then rotate as needed to account for current lonOffset
 			// Otherwise planet screen position gets weird!
-			var pos = MapProjection.Geodetic2Vector(-67, 0);
-			this.transform.position = pos * new Vector3(26, 0, -62).magnitude;
-			this.transform.eulerAngles = Vector3.zero;
+			var pos = MapProjection.Geodetic2Vector(-74, 0); // -67, 0
+			this.transform.position = pos * new Vector3(17, 0, -60).magnitude; // 26,0,-62
+			this.transform.eulerAngles = new Vector3(0, -16, 0);  //Vector3.zero;
 			this.transform.RotateAround(planet.transform.position,
 										Camera.main.transform.up,
 										lonOffset - lonOffsetBase);
