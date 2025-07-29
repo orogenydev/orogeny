@@ -33,7 +33,7 @@ public class Movements : MonoBehaviour
 
     void FixedUpdate()
     {
-        float vel_m = this.GetComponent<Rigidbody>().velocity.magnitude;
+        float vel_m = this.GetComponent<Rigidbody>().linearVelocity.magnitude;
         if (OnPlanet)
         {
             this
@@ -49,7 +49,7 @@ public class Movements : MonoBehaviour
                 ForceMode.VelocityChange);
         }
 
-        Vector3 velocity = this.GetComponent<Rigidbody>().velocity;
+        Vector3 velocity = this.GetComponent<Rigidbody>().linearVelocity;
         //this.GetComponent<Rigidbody>().velocity=new Vector3(velocity.x/vel_m,velocity.y/vel_m,velocity.z/vel_m);
     }
 

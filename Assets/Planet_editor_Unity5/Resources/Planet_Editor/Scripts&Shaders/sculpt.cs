@@ -9,6 +9,7 @@ using Orogeny.Convection;
 using Orogeny.Maps;
 using Orogeny.Meshes;
 using Orogeny.Plates;
+using Orogeny.Hotspots;
 
 namespace Orogeny {
     public class sculpt : MonoBehaviour {
@@ -73,6 +74,7 @@ namespace Orogeny {
         private Convector convector;
         private PlateCollisions plateCollisions;
         private Vector3[] convectorNormals;
+        private List<Hotspot> hotspots;
 
         private List<Color> colors;
 
@@ -81,7 +83,10 @@ namespace Orogeny {
         private NativeArray<RaycastCommand> raycastCommandsUplift;
         private NativeArray<RaycastHit> raycastHitsUplift;
 
-        public void Start() {
+        private float hackyLongitudeAdjustement = -73; // This aligns the camera
+
+        public void Start()
+        {
             blend1 =
                 planet
                     .transform
@@ -121,19 +126,23 @@ namespace Orogeny {
 
             plates = new List<Plate>();
 
-            AddPlate(-67, 0, 5f, 1.5f, icosphere);
-            AddPlate(-10, 5, 5f, 1.0f, icosphere);
+            AddPlate(0, 0, 5f, 1.5f, icosphere);
+            AddPlate(90, 0, 5f, 1.0f, icosphere);
 
-            AddPlate(-70, 5, 5f, 1.5f, icosphere);
-            AddPlate(-10, 5, 5f, 1.0f, icosphere);
-            AddPlate(90, 10, 15f, 1.0f, icosphere);
-            AddPlate(0, -80, 15f, 1.0f, icosphere);
-            AddPlate(170, -10, 12f, 1.0f, icosphere);
-            AddPlate(0, 85, 14f, 1.0f, icosphere);
+            AddPlate(-90, 0, 5f, 1.5f, icosphere);
+            AddPlate(-180, 0, 5f, 1.0f, icosphere);
+            AddPlate(0, 90, 5f, 1.0f, icosphere);
+            AddPlate(0, -90, 5f, 1.0f, icosphere);
+            // AddPlate(170, -10, 12f, 1.0f, icosphere);
+            // AddPlate(0, 85, 14f, 1.0f, icosphere);
 
             ExpandPlates(icosphere, icoNeighbors);
 
             FinalizePlates(icosphere);
+
+            hotspots = new List<Hotspot>();
+            AddHotspot(0, 0);
+            AddHotspot(-90, 0);
 
             var mesh = planet.GetComponent<MeshFilter>().mesh;
             mesh.MarkDynamic();
@@ -151,27 +160,6 @@ namespace Orogeny {
         // https://www.toptal.com/designers/colourcode/analogic-color-builder
         private void InitColors() {
             colors = new List<Color>();
-            // colors.Add(ParseColor("#21205A"));
-            // colors.Add(ParseColor("#2B205C"));
-            // colors.Add(ParseColor("#35215E"));
-            // colors.Add(ParseColor("#3F2160"));
-            // colors.Add(ParseColor("#4A2163"));
-            // colors.Add(ParseColor("#562265"));
-            // colors.Add(ParseColor("#622267"));
-            // colors.Add(ParseColor("#692264"));
-            // colors.Add(ParseColor("#6C225B"));
-            // colors.Add(ParseColor("#6E2352"));
-
-            // colors.Add(ParseColor("#254B68"));
-            // colors.Add(ParseColor("#25436A"));
-            // colors.Add(ParseColor("#26396D"));
-            // colors.Add(ParseColor("#262F6F"));
-            // colors.Add(ParseColor("#282671"));
-            // colors.Add(ParseColor("#342673"));
-            // colors.Add(ParseColor("#412776"));
-            // colors.Add(ParseColor("#4E2778"));
-            // colors.Add(ParseColor("#5B277A"));
-            // colors.Add(ParseColor("#6A277D"));
 
             colors.Add(ParseColor("#58C3BD"));
             colors.Add(ParseColor("#59BBC5"));
@@ -201,6 +189,7 @@ namespace Orogeny {
         }
 
         private void AddPlate(float lon, float lat, float size, float height, Mesh icosphere) {
+            lon = lon + hackyLongitudeAdjustement;
             var name = "Plate " + plates.Count;
             var color = colors[(plates.Count * 3) % colors.Count];
             var gameObject = new GameObject(name);
@@ -216,8 +205,8 @@ namespace Orogeny {
         private void ExpandPlates(Mesh icosphere, Dictionary<int, List<int>> neighbors) {
             var more = true;
 
-            //while (more) {
-            for (var i = 0; i < 10; i++) {
+            while (more) {
+            //for (var i = 0; i < 15; i++) {
                 more = false;
                 foreach (var plate in plates) {
                     more |= plate.ExpandCrust(icosphere, neighbors);
@@ -368,6 +357,14 @@ namespace Orogeny {
             mesh.RecalculateBounds();
         }
 
+        private void AddHotspot(float _lon, float _lat) {
+            var lon = _lon + hackyLongitudeAdjustement;
+            var name = "Hotspot " + hotspots.Count;
+            var position = MapProjection.Geodetic2Vector(lon, _lat).normalized * Plate.magmatismDepth;
+            var hotspot = new Hotspot(planet.gameObject, position);
+            hotspots.Add(hotspot);
+        }
+
         public void OnDrawGizmos () {
             if (ui == null || plates == null)
                 return;
@@ -412,8 +409,8 @@ namespace Orogeny {
                 GetComponent<Camera>().cullingMask &= ~(1 << LayerMask.NameToLayer("EventMarkers"));
             }
 
-            foreach (var plate in plates) {
-                plate.SetMeshDisplay(ui.IsDisplayFeatureOn(DisplayFeature.PlateMeshes));
+			for (var i = 0; i < plates.Count; i++) {
+                plates[i].SetMeshDisplay(ui.IsDisplayFeatureOn(DisplayFeature.PlateMeshes) && ui.IsDisplayPlateOn(i));
             }
 
             if (ui.IsPlaying()) {
@@ -449,6 +446,10 @@ namespace Orogeny {
                         break;
                     case Phase.Volcanism:
                         if (ui.IsSubsystemFeatureOn(SubsystemFeature.Volcanism)) {
+                            foreach (var hotspot in hotspots) {
+                                hotspot.DoVolcanism();
+                            }
+
                             plates[curPlate].DoVolcanism();
                         }
                         break;

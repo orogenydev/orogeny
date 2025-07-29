@@ -11,7 +11,6 @@ namespace Orogeny.Plates {
             DeformPerimeterContinent(point);
             PropagateDeformationContinent();
 
-            ui.TriggerBreakpoint(Breakpoint.AnyCollision);
             ui.TriggerBreakpoint(Breakpoint.ContinentalSquish);
         }
 
