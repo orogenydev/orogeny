@@ -23,7 +23,7 @@ namespace Orogeny.Plates {
         }
 
         public override void DoUplift(Plate plate) {
-            plate.UpliftTerrane(position, 0.008f);
+            plate.UpliftTerrane(position, 0.012f);
         }
     }
 }

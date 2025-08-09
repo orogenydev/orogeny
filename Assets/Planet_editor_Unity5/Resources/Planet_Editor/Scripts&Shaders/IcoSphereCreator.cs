@@ -100,7 +100,7 @@ namespace Orogeny.Meshes {
             mesh.name = "Icosphere";
 
             for (int i = 0; i < vertexNum; i++) {
-                vertices[i] *= radius;
+                vertices[i] = vertices[i].normalized * radius;
                 tangents[i] = Vector4.zero;
                 uv[i] = Vector2.zero;
                 uv2[i] = Vector2.zero;

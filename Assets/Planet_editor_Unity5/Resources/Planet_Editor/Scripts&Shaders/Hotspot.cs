@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
@@ -5,23 +6,31 @@ using UnityEngine;
 using Orogeny.Plates;
 
 namespace Orogeny.Hotspots {
-    public class Hotspot {
-        private Vector3 position;
+    [Serializable]
+    public class Hotspot : MonoBehaviour
+    {
+        public Vector3 position;
+
         private Plate curPlate;
         private Magma curMagma;
         private GameObject curGO;
+        private GameObject marker;
 
-        public Hotspot(GameObject gameObject, Vector3 _position) {
+        public void Initialize(Vector3 _position, string _name)
+        {
             position = _position;
-            
-            Plate.CreateEventMarker(gameObject, new Color(1.0f, 0f, 0f, 1.0f), position.normalized * 25, 1.0f, "EventMarkers", "Hotspot");
+            name = _name;
+
+            marker = Plate.CreateEventMarker(gameObject, new Color(1.0f, 0f, 0f, 1.0f), position.normalized * 25, 1.0f, "EventMarkers", $"Marker ({name})");
         }
 
-        public Vector3 GetPosition() {
+        public Vector3 GetPosition()
+        {
             return position;
         }
 
-        private void CreateMagma() {
+        private void CreateMagma()
+        {
             // Find which plate we are currently under
             Ray ray = new Ray(Vector3.zero, position);
             ray.origin = ray.GetPoint(50);
@@ -35,14 +44,16 @@ namespace Orogeny.Hotspots {
             curMagma = curPlate.AddMagma(position, MagmaType.Hotspot);
         }
 
-        private void KillMagma() {
+        private void KillMagma()
+        {
             curPlate.KillMagma(curMagma);
             curMagma = null;
             curPlate = null;
             curGO = null;
         }
 
-        public void DoVolcanism() {
+        public void DoVolcanism()
+        {
             var maxDist = 4.0f;
 
             // Check distance to curMagma, if too far kill it and start a new one straight above
@@ -61,6 +72,10 @@ namespace Orogeny.Hotspots {
             {
                 CreateMagma();
             }
+        }
+
+        public void OnDestroy() {
+            Destroy(marker);
         }
     }
 }

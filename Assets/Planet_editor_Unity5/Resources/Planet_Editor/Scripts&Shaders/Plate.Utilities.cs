@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 
 namespace Orogeny.Plates {
@@ -10,56 +11,64 @@ namespace Orogeny.Plates {
         Virtual
     }
 
-    public partial class Plate {
-        public static float continentalCrustThickness = 0.5f;
-        public static float hotCrustThicknessBonus = 0.4f;
-        public static float framesToCool = 10000;
+    public partial class Plate
+    {
+        public static float continentalCrustThickness = 0.75f;
+        public static float hotCrustThicknessBonus = 0.5f;
+        public static float framesToCool = 1000;
 
         public static float seaFloorRadius = 25;
         public static float trenchRadius = 24.5f;
         public static float mohoRadius = 18;
         public static float coreRadius = 12;
 
-        public static float distanceThreshold = 0.5f;
+        public static float vertexSquishAllowance = 0.3f;
 
         public static float magmatismDepth = seaFloorRadius - 1f;
         public static float magmatismUpperLimit = seaFloorRadius - 2f;
         public static float magmatismLowerLimit = seaFloorRadius - 2.5f;
-        public static double magmatismBirthChance = 0.2;
+        public static double magmatismBirthChance = 0.1;
         public static double magmatismEruptionChance = 0.4;
-        public static double magmatismHotspotEruptionChance = 0.8;
-        public static double magmatismDeathChance = 0.04;
+        public static double magmatismHotspotEruptionChance = 1.0; //0.8;
+        public static double magmatismDeathChance = 0.05;
 
-        public static Dictionary<int, List<int>> ExtractNeighbors(Mesh mesh) {
+        public static Dictionary<int, List<int>> ExtractNeighbors(Mesh mesh)
+        {
             var neighbors = new Dictionary<int, List<int>>();
             var triangles = mesh.triangles;
 
-            // Fill in the neighbors dictionary
-            for (int i = 0; i < triangles.Length; i += 3) {
-                for (int j = 0; j < 3; j++) {
+            for (int i = 0; i < triangles.Length; i += 3)
+            {
+                for (int j = 0; j < 3; j++)
+                {
                     AddNeighbors(neighbors,
-                                triangles[i + j], 
+                                triangles[i + j],
                                 new int[] { triangles[i + (j + 1) % 3],
-                                            triangles[i + (j + 2) % 3] } );
+                                            triangles[i + (j + 2) % 3] });
                 }
             }
 
             return neighbors;
         }
 
-        public static void AddNeighbors(Dictionary<int, List<int>> neighbors, int v, int[] others) {
-            if (!neighbors.ContainsKey(v)) {
+        public static void AddNeighbors(Dictionary<int, List<int>> neighbors, int v, int[] others)
+        {
+            if (!neighbors.ContainsKey(v))
+            {
                 neighbors.Add(v, new List<int>());
             }
 
-            for (int i = 0; i < others.Length; i++) {
-                if (!neighbors[v].Contains(others[i])) {
+            for (int i = 0; i < others.Length; i++)
+            {
+                if (!neighbors[v].Contains(others[i]))
+                {
                     neighbors[v].Add(others[i]);
                 }
             }
         }
 
-        public static GameObject CreateEventMarker(GameObject parent, Color color, Vector3 position, float diameter, string layer, string name = "EventMarker") {
+        public static GameObject CreateEventMarker(GameObject parent, Color color, Vector3 position, float diameter, string layer, string name = "EventMarker")
+        {
             GameObject sphere = GameObject.CreatePrimitive(PrimitiveType.Sphere);
             sphere.transform.position = position;
             sphere.transform.parent = parent.transform;
@@ -76,24 +85,16 @@ namespace Orogeny.Plates {
             return sphere;
         }
 
-        public static Plate FindPlateByInstanceID(List<Plate> plates, int id) {
-            foreach (Plate plate in plates) {
-                var collider = plate.gameObject.GetComponent<MeshCollider>();
-                if (collider.GetInstanceID() == id) {
-                    return plate;
-                }
-            }
-
-            return null;
-        }
-
-        public static int FindClosestVertex(Vector3[] vertices, Vector3 point) {
+        public static int FindClosestVertex(Vector3[] vertices, Vector3 point)
+        {
             var closest = -1;
             var minDist = float.MaxValue;
 
-            for (int i = 0; i < vertices.Length; i++) {
+            for (int i = 0; i < vertices.Length; i++)
+            {
                 var dist = (vertices[i] - point).magnitude;
-                if (dist < minDist) {
+                if (dist < minDist)
+                {
                     closest = i;
                     minDist = dist;
                 }
@@ -102,11 +103,14 @@ namespace Orogeny.Plates {
             return closest;
         }
 
-        public List<int> ExtractPerimeter() {
+        public List<int> ExtractPerimeter()
+        {
             var perimeter = new List<int>();
 
-            foreach (int v in neighbors.Keys) {
-                if (IsPerimeterVertex(v)) {
+            foreach (int v in neighbors.Keys)
+            {
+                if (IsPerimeterVertex(v))
+                {
                     perimeter.Add(v);
                 }
             }
@@ -114,34 +118,41 @@ namespace Orogeny.Plates {
             return perimeter;
         }
 
-        public bool IsPerimeterVertex(int v) {
+        public bool IsPerimeterVertex(int v)
+        {
             if (!IsSubducted(plateVertices[v]) &&
                 !IsVirtual(plateVertices[v]) &&
                 !IsSubducting(v) &&
-                InvalidNeighborCount(v) > 0) {
-                    return true;
+                InvalidNeighborCount(v) > 0)
+            {
+                return true;
             }
 
             return false;
         }
 
-        public List<GameObject> CreatePerimeterMarkers(GameObject parent, Color color) {
+        public List<GameObject> CreatePerimeterMarkers(GameObject parent, Color color)
+        {
             var markers = new List<GameObject>();
 
-            foreach (var v in perimeter) {
+            foreach (var v in perimeter)
+            {
                 markers.Add(CreateEventMarker(parent, color, plateVertices[v], 0.5f, "PerimeterPoints", "Perimeter"));
             }
 
             return markers;
         }
 
-        public int FindClosestPerimeter(Vector3 point) {
+        public int FindClosestPerimeter(Vector3 point)
+        {
             var closest = -1;
             var minDist = float.MaxValue;
 
-            foreach (var p in perimeter) {
+            foreach (var p in perimeter)
+            {
                 var dist = (plateVertices[p] - point).magnitude;
-                if (dist < minDist) {
+                if (dist < minDist)
+                {
                     closest = p;
                     minDist = dist;
                 }
@@ -150,45 +161,58 @@ namespace Orogeny.Plates {
             return closest;
         }
 
-        public CrustType GetCrustType(Vector3 vertex) {            
-            if (vertex.magnitude > seaFloorRadius + continentalCrustThickness / 2.0f) {
+        public CrustType GetCrustType(Vector3 vertex)
+        {
+            if (vertex.magnitude > seaFloorRadius + continentalCrustThickness)
+            {
                 return CrustType.Continental;
             }
 
-            if (vertex.magnitude > trenchRadius) {
+            if (vertex.magnitude > trenchRadius)
+            {
                 return CrustType.Oceanic;
             }
 
-            if (vertex.magnitude > mohoRadius) {
+            if (vertex.magnitude > mohoRadius)
+            {
                 return CrustType.Subducted;
             }
 
             return CrustType.Virtual;
         }
 
-        public bool IsContinental(Vector3 vertex) {
+        public bool IsContinental(Vector3 vertex)
+        {
             var sampleType = GetCrustType(vertex);
             return sampleType == CrustType.Continental;
         }
 
-        public bool IsOceanic(Vector3 vertex) {
+        public bool IsOceanic(Vector3 vertex)
+        {
             var sampleType = GetCrustType(vertex);
             return sampleType == CrustType.Oceanic;
         }
 
-        public bool IsOceanicOrContinental(Vector3 vertex) {
+        public bool IsOceanicOrContinental(Vector3 vertex)
+        {
             var sampleType = GetCrustType(vertex);
             return sampleType == CrustType.Oceanic || sampleType == CrustType.Continental;
         }
 
-        public bool IsSubducted(Vector3 vertex) {
+        public bool IsSubducted(Vector3 vertex)
+        {
             var sampleType = GetCrustType(vertex);
             return sampleType == CrustType.Subducted;
         }
 
         public bool IsSubducting(int v)
         {
-            return vertexScaling[v] != 1.0f;
+            return !IsVirtual(plateVertices[v]) && vertexSubducting[v];
+        }
+
+        public bool AreAnySubducting(List<int> vertices)
+        {
+            return vertices.Where(v => IsSubducting(v)).Any();
         }
 
         public bool IsVirtual(Vector3 vertex)
@@ -197,7 +221,8 @@ namespace Orogeny.Plates {
             return sampleType == CrustType.Virtual;
         }
 
-        public Quaternion CreateVertexRotation(Vector3 direction, Vector3 normal, float scale) {
+        public Quaternion CreateVertexRotation(Vector3 direction, Vector3 normal, float scale)
+        {
             var pivot = Vector3.Cross(normal, direction);
             var amount = direction.magnitude * scale;
             return Quaternion.AngleAxis(amount, pivot);
@@ -205,7 +230,8 @@ namespace Orogeny.Plates {
 
         // WCS -> local movement CS
         // Returns a rotation that will align Z with collisionForce and Y with the up vector
-        public Quaternion WCS2MovementCS(Vector3 collisionForce, Vector3 up) {
+        public Quaternion WCS2MovementCS(Vector3 collisionForce, Vector3 up)
+        {
             return Quaternion.Inverse(Quaternion.LookRotation(collisionForce, up));
         }
 
@@ -224,7 +250,8 @@ namespace Orogeny.Plates {
             return (targetP - originP).magnitude < threshold;
         }
 
-        public Vector3 ProjectBack(Vector3 collisionForce, Vector3 target, Vector3 origin, Vector3 up, float discount) {
+        public Vector3 ProjectBack(Vector3 collisionForce, Vector3 target, Vector3 origin, Vector3 up, float discount)
+        {
             var q = WCS2MovementCS(collisionForce, up);
 
             var targetP = q * target;
@@ -236,8 +263,10 @@ namespace Orogeny.Plates {
             return Quaternion.Inverse(q) * targetP;
         }
 
-        public void UpliftTerrane(Vector3 position, float amount, float threshold = 0.01f) {
-            for (int i = 0; i < plateVertices.Length; i++) {
+        public void UpliftTerrane(Vector3 position, float amount, float threshold = 0.01f)
+        {
+            for (int i = 0; i < plateVertices.Length; i++)
+            {
                 // Work from normalized positions, otherwise the uplift slows as the node is uplifted away from the volcanism!
                 var dist = (plateVertices[i].normalized - position.normalized).magnitude;
 
@@ -251,7 +280,8 @@ namespace Orogeny.Plates {
         }
 
         // Have to use this instead of the normal, because they don't always line up perfectly.
-        public Vector3 Elevate(Vector3 collisionForce, Vector3 target, Vector3 up, float amount) {
+        public Vector3 Elevate(Vector3 collisionForce, Vector3 target, Vector3 up, float amount)
+        {
             var q = WCS2MovementCS(collisionForce, up);
 
             var targetP = q * target;
@@ -261,15 +291,17 @@ namespace Orogeny.Plates {
             return Quaternion.Inverse(q) * targetP;
         }
 
-        public bool IsOnlyVirtualAtPoint(Vector3 point, MeshCollider localCollider) {
+        public bool IsOnlyVirtualAtPoint(Vector3 point, MeshCollider localCollider, float radius = 0.5f)
+        {
             Ray ray = new Ray(Vector3.zero, point);
             ray.origin = ray.GetPoint(50);
             ray.direction = -ray.direction;
             var mask = LayerMask.GetMask("Plates");
 
-            var hits = Physics.SphereCastAll(ray, 0.5f, 50 - Plate.mohoRadius, mask);
+            var hits = Physics.SphereCastAll(ray, radius, 50 - Plate.mohoRadius, mask);
 
-            for (var i = 0; i < hits.Length; i++) {
+            for (var i = 0; i < hits.Length; i++)
+            {
                 // Can't just look at IsVirtual for the hit point, because it might be on the side of a triangle sloping down to the core
                 MeshCollider meshCollider = hits[i].collider as MeshCollider;
                 Mesh mesh = meshCollider.sharedMesh;
@@ -303,11 +335,14 @@ namespace Orogeny.Plates {
             events.Clear();
         }
 
-        private int ValidNeighborCount(int v) {
+        private int ValidNeighborCount(int v)
+        {
             var count = 0;
 
-            foreach (var n in neighbors[v]) {
-                if (IsOceanicOrContinental(plateVertices[n])) {
+            foreach (var n in neighbors[v])
+            {
+                if (IsOceanicOrContinental(plateVertices[n]))
+                {
                     count++;
                 }
             }
@@ -315,18 +350,74 @@ namespace Orogeny.Plates {
             return count;
         }
 
-        public int InvalidNeighborCount(int v) {
+        public List<int> GetValidNeighbors(int startingVertex, int depth)
+        {
+            var foundNeighbors = new Dictionary<int, bool> { { startingVertex, true } };
+
+            for (var i = 0; i < depth; i++)
+            {
+                var prevs = foundNeighbors.Keys.ToList<int>();
+
+                foreach (var v in prevs)
+                {
+                    foreach (var n in neighbors[v])
+                    {
+                        if (IsOceanicOrContinental(plateVertices[n]))
+                        {
+                            foundNeighbors[n] = true;
+                        }
+                    }
+                }
+            }
+
+            return foundNeighbors.Keys.ToList<int>();
+        }
+
+        public int InvalidNeighborCount(int v)
+        {
             var invalids = 0;
 
-            foreach (var n in neighbors[v]) {
-                if (IsSubducted(plateVertices[n]) || IsVirtual(plateVertices[n]) || IsSubducting(n)) {
+            foreach (var n in neighbors[v])
+            {
+                if (IsSubducted(plateVertices[n]) || IsVirtual(plateVertices[n]) || IsSubducting(n))
+                {
                     invalids++;
                 }
             }
 
             return invalids;
         }
-        
+
+        public int RealNeighborCount(int v)
+        {
+            var reals = 0;
+
+            foreach (var n in neighbors[v])
+            {
+                if (realVertices.Contains(v))
+                {
+                    reals++;
+                }
+            }
+
+            return reals;
+        }
+
+        public int SubductingNeighborCount(int v)
+        {
+            var subductings = 0;
+
+            foreach (var n in neighbors[v])
+            {
+                if (IsSubducting(n))
+                {
+                    subductings++;
+                }
+            }
+
+            return subductings;
+        }
+
         private void CheckNeighborPerimeterStatus(int v)
         {
             foreach (var n in neighbors[v])
@@ -338,13 +429,16 @@ namespace Orogeny.Plates {
             }
         }
 
-        private void AddToPerimeter(int v) {
+        private void AddToPerimeter(int v)
+        {
             perimeter.Add(v);
             perimeterMarkers.Add(CreateEventMarker(gameObject, color, plateVertices[v], 0.5f, "PerimeterPoints", "Perimeter"));
         }
 
-        private void RemoveFromPerimeter(int v) {
-            if (perimeter.Contains(v)) {
+        private void RemoveFromPerimeter(int v)
+        {
+            if (perimeter.Contains(v))
+            {
                 var index = perimeter.IndexOf(v);
                 perimeter.RemoveAt(index);
                 Destroy(perimeterMarkers[index]);
@@ -354,33 +448,105 @@ namespace Orogeny.Plates {
             }
         }
 
-        private void CheckNeighborsForPerimeterness(int v) {
-            foreach (var n in neighbors[v]) {
+        private void CheckNeighborsForPerimeterness(int v)
+        {
+            foreach (var n in neighbors[v])
+            {
                 CheckForPerimeterness(n);
             }
         }
 
-        private void CheckForPerimeterness(int v) {
-            if (!perimeter.Contains(v) && IsPerimeterVertex(v)) {
+        private void CheckForPerimeterness(int v)
+        {
+            if (!perimeter.Contains(v) && IsPerimeterVertex(v))
+            {
                 AddToPerimeter(v);
+            }
+            else if (perimeter.Contains(v) && !IsPerimeterVertex(v))
+            {
+                RemoveFromPerimeter(v);
             }
         }
 
-        private void RemoveReal(int v) {
-            if (realVertices.Contains(v)) {
+        private void RemoveReal(int v)
+        {
+            if (realVertices.Contains(v))
+            {
                 realVertices.Remove(v);
             }
         }
- 
-        private void CopyMesh(Mesh _mesh) {
-            mesh = new Mesh();
-            mesh.vertices = _mesh.vertices;
-            mesh.triangles = _mesh.triangles;
-            mesh.normals = _mesh.normals;
-            mesh.tangents = _mesh.tangents;
-            mesh.uv = _mesh.uv;
-            mesh.uv2 = _mesh.uv2;
+
+        public float GetVertexSquishedness(int v)
+        {
+            return (plateVertices[v] - vertexHomes[v] * plateVertices[v].magnitude).magnitude;
+        }
+
+        private void ResetVertexSquishedness(int v)
+        {
+            plateVertices[v] = vertexHomes[v] * plateVertices[v].magnitude;
+            mesh.vertices = plateVertices;
+            mesh.RecalculateBounds();
+        }
+
+        public void SquishVertex(int v, Vector3 pointOfContact, bool squishAway = true)
+        {
+            var diff = squishAway ? plateVertices[v] - pointOfContact : pointOfContact - plateVertices[v];
+            plateVertices[v] = (plateVertices[v] + diff).normalized * plateVertices[v].magnitude;
+            mesh.vertices = plateVertices;
+            mesh.RecalculateBounds();
+        }
+
+        public Mesh TearOffSubductingVertices()
+        {
+            var newMesh = CloneMesh(mesh);
+            var newPlateVertices = newMesh.vertices;
+
+            for (int v = 0; v < mesh.vertices.Length; v++)
+            {
+                if (IsSubducting(v))
+                {
+                    RemoveReal(v);
+                    RemoveFromPerimeter(v);
+                    plateVertices[v] = vertexHomes[v].normalized * coreRadius;
+                    newPlateVertices[v] = vertexHomes[v].normalized * newPlateVertices[v].magnitude;
+                }
+                else
+                {
+                    newPlateVertices[v] = vertexHomes[v].normalized * coreRadius;
+                }
+            }
+
+            mesh.vertices = plateVertices;
+            mesh.RecalculateBounds();
+            newMesh.vertices = newPlateVertices;
+            newMesh.RecalculateBounds();
+            return newMesh;
+        }
+
+        private void CopyMesh(Mesh _mesh)
+        {
+            mesh = CloneMesh(_mesh);
             mesh.name = "Mesh " + plateNumber;
+
+            neighbors = ExtractNeighbors(mesh);
+
+            vertexHomes = _mesh.vertices;
+            for (int i = 0; i < vertexHomes.Length; i++)
+            {
+                vertexHomes[i] = vertexHomes[i].normalized;
+            }
+        }
+
+        public Mesh CloneMesh(Mesh _mesh)
+        {
+            var newMesh = new Mesh();
+            newMesh.vertices = _mesh.vertices;
+            newMesh.triangles = _mesh.triangles;
+            newMesh.normals = _mesh.normals;
+            newMesh.tangents = _mesh.tangents;
+            newMesh.uv = _mesh.uv;
+            newMesh.uv2 = _mesh.uv2;
+            return newMesh;           
         }
    }
 }

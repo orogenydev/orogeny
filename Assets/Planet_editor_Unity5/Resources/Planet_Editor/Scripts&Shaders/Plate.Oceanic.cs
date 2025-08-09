@@ -12,47 +12,52 @@ namespace Orogeny.Plates {
             ui.TriggerBreakpoint(Breakpoint.Subduction);
         }
 
-/*         private void OceanicOceanicCollision(Vector3 point, Plate other) {
-            //Debug.Log("O-O");
-
-            // Base this on relative density eventually...
-            if (plateNumber < other.GetPlateNumber()) {
-                // We subduct
-                ProcessSubduction(point);
-
-                ui.TriggerBreakpoint(Breakpoint.AnyCollision);
-                ui.TriggerBreakpoint(Breakpoint.Subduction);
-            }
-        } */
-
         // One of our perimeters has collided
-        private void OceanicOceanicCollision(int v, Plate other)
+        private void OceanicOceanicCollision(int v, Plate other, int v0, int v1, int v2)
         {
             //Debug.Log("O-O");
 
-            // Base this on relative density eventually...
-            if (plateNumber < other.GetPlateNumber())
+            // Take the median plateRenderCount ages stored in uv2 for determining who will subduct
+            var localVertices = GetValidNeighbors(v, 3);
+            var localUVMedian = localVertices.Median(v => mesh.uv2[v].x);
+
+            var otherVertices = other.GetValidNeighbors(v0, 3);
+            var otherUVMedian = otherVertices.Median(v => other.GetMesh().uv2[v].x);
+
+            // If any of my extended neighbors are subducting, we subduct
+            // If any of their extended neighbors are subducting, let them have it
+            // Other fall back to UV2 plateRenderCount ages
+            if (AreAnySubducting(localVertices) || (!other.AreAnySubducting(otherVertices) && localUVMedian < otherUVMedian))
             {
                 // We subduct
-                DeformPerimeterOceanic(v);
-                RemoveFromPerimeter(v);
+                if (!IsSubducting(v))
+                {
+                    InitiateSubductionOceanic(v);
+                    RemoveFromPerimeter(v);
 
-                ui.TriggerBreakpoint(Breakpoint.Subduction);
+                    ui.TriggerBreakpoint(Breakpoint.Subduction);
+                }
             }
         }
 
         // One of our triangles has collided
-        private void OceanicOceanicCollision(int v0, int v1, int v2, Plate other)
+        private void OceanicOceanicCollision(int v0, int v1, int v2, Plate other, int v)
         {
             //Debug.Log("O-O");
 
-            // Base this on relative density eventually...
-            if (plateNumber < other.GetPlateNumber())
+            // Take the median plateRenderCount ages stored in uv2 for determining who will subduct
+            var localVertices = GetValidNeighbors(v0, 3);
+            var localUVMedian = localVertices.Median(v => mesh.uv2[v].x);
+
+            var otherVertices = other.GetValidNeighbors(v, 3);
+            var otherUVMedian = otherVertices.Median(v => other.GetMesh().uv2[v].x);
+
+            if (AreAnySubducting(localVertices) || (!other.AreAnySubducting(otherVertices) && localUVMedian < otherUVMedian))
             {
                 // We subduct
 
                 // If none of the triangle is subducted, subduct all its current perimeter points
-                // If any of it already is subducted, do nothing
+                // If any of it already is subducting, do nothing
                 if (!IsSubducting(v0) && !IsSubducting(v1) && !IsSubducting(v2))
                 {
                     var subducted = new List<int>();
@@ -60,9 +65,9 @@ namespace Orogeny.Plates {
                     SubductIfPerimeter(v1, subducted);
                     SubductIfPerimeter(v2, subducted);
 
-                    foreach (var v in subducted)
+                    foreach (var s in subducted)
                     {
-                        RemoveFromPerimeter(v);
+                        RemoveFromPerimeter(s);
                     }
 
                     ui.TriggerBreakpoint(Breakpoint.Subduction);
@@ -74,9 +79,30 @@ namespace Orogeny.Plates {
         {
             if (perimeter.Contains(v))
             {
-                DeformPerimeterOceanic(v);
+                InitiateSubductionOceanic(v);
                 subducted.Add(v);
             }            
+        }
+
+        public void InitiateSubductionOceanic(int v)
+        {
+            vertexNext[v] = mesh.vertices[v];
+            vertexSubducting[v] = true;
+            vertexActions[v] = Color.white;
+            AddToCohort(v, 0);
+
+            plateVertices[v] = plateVertices[v].normalized * (plateVertices[v].magnitude - 0.1f);
+
+            // Apply trenchiness
+            foreach (var n in GetValidNeighbors(v, 1))
+            {
+                if (!IsSubducting(n))
+                {
+                    plateVertices[n] = plateVertices[n].normalized * (plateVertices[n].magnitude - 0.05f);
+                }
+            }
+
+            mesh.vertices = plateVertices;
         }
 
         /*         private void ProcessSubduction(Vector3 point)
@@ -111,7 +137,7 @@ namespace Orogeny.Plates {
                             //vertexNext[v] = Elevate(collisionForce, vertex, normal, adjustedScale);
                             //vertexNext[v] = Vector3.Scale(vertex, new Vector3(0.95f, 0.95f, 0.95f));
                             vertexNext[v] = vertex;
-                            vertexScaling[v] = 0.9994f; // This gets applied every frame, so the difference from 1 needs to be quite small
+                            vertexSubducting[v] = true;
                             vertexActions[v] = Color.white;
                             AddToCohort(v, 0);
 
@@ -122,13 +148,6 @@ namespace Orogeny.Plates {
                     return subducted;
                 }
          */
-        public void DeformPerimeterOceanic(int v)
-        {
-            vertexNext[v] = mesh.vertices[v];
-            vertexScaling[v] = 0.9995f; // This gets applied every frame, so the difference from 1 needs to be quite small
-            vertexActions[v] = Color.white;
-            AddToCohort(v, 0);
-        }
 
         public void PropagateDeformationOceanic()
         {

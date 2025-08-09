@@ -32,7 +32,8 @@ namespace Orogeny.Plates {
 
         public void SetPosition(Vector3 _position) {
             position = _position;
-            marker.transform.position = position;
+            if (marker != null)
+                marker.transform.position = position;
         }
 
         public bool GetActive() {
@@ -41,8 +42,8 @@ namespace Orogeny.Plates {
 
         public GameObject Kill(GameObject gameObject) {
             var oldMarker = marker;
+            marker = null;
             active = false;
-            marker = Plate.CreateEventMarker(gameObject, new Color(0.5f, 0.5f, 0.5f, 0.5f), position.normalized * 25, 1.0f, "EventMarkers", "EventMagmaDead");
             return oldMarker;
         }
 

@@ -17,7 +17,6 @@ namespace Orogeny.Meshes {
         [SerializeField]
         public float[] normals;
         [SerializeField]
-        public Color[] colors;
 
         public SerializableMeshInfo(Mesh m) // Constructor: takes a mesh and fills out SerializableMeshInfo data structure which basically mirrors Mesh object's parts.
         {

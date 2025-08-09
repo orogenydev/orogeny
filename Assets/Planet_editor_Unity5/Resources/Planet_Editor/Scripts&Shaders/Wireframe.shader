@@ -5,6 +5,8 @@ Shader "Custom/Wireframe"
         _MainTex ("Texture", 2D) = "white" {}
         _WireframeColor("Wireframe front colour", color) = (1.0, 1.0, 1.0, 1.0)
         _WireframeWidth("Wireframe Width", float) = 0.05
+        _CullRadius("Culling radius", float) = 22.0
+        _SeaLevel("Top of the water sphere", float) = 26.0
     }
 
     SubShader
@@ -15,7 +17,7 @@ Shader "Custom/Wireframe"
 
         Pass
         {
-            Cull Off
+            // Cull Off
             CGPROGRAM
             #pragma vertex vert
             #pragma fragment frag
@@ -46,6 +48,8 @@ Shader "Custom/Wireframe"
 
             sampler2D _MainTex;
             float4 _MainTex_ST;
+            float _CullRadius;
+            float _SeaLevel;
 
             v2f vert(appdata v)
             {
@@ -61,7 +65,7 @@ Shader "Custom/Wireframe"
             [maxvertexcount(3)]
             void geom(triangle v2f IN[3], inout TriangleStream<g2f> triStream) {
                 bool hidden = false;
-                if (IN[0].col.x < 18 || IN[1].col.x < 18 || IN[2].col.x < 18) {
+                if (IN[0].col.x <= _CullRadius && IN[1].col.x <= _CullRadius && IN[2].col.x <= _CullRadius) {
                     hidden = true;
                 }
 
@@ -95,10 +99,10 @@ Shader "Custom/Wireframe"
                 float alpha = step(closest, _WireframeWidth);
 
                 if (alpha != 0) {
-                    alpha = step(22, i.col.x);
+                    alpha = step(_CullRadius, i.col.x);
                 }
 
-                alpha *= i.col.x > 25.5 ? 0.75 : 0.4;
+                alpha *= i.col.x >= _SeaLevel ? 0.75 : 0.4;
 
                 // Set to our backwards facing wireframe colour.
                 return fixed4(_WireframeColor.r, _WireframeColor.g, _WireframeColor.b, alpha);

@@ -17,7 +17,8 @@ namespace Orogeny.Plates {
             return false;
         }
 
-        public override void DoUplift(Plate plate) {
+        public override void DoUplift(Plate plate)
+        {
             plate.UpliftTerrane(position, 0.015f, 0.03f);
         }
     }

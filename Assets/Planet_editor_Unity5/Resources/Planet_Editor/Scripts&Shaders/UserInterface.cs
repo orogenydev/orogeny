@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -6,12 +7,13 @@ using TMPro;
 using Orogeny.Maps;
 
 namespace Orogeny {
-	public enum SubsystemFeature {
+	public enum SubsystemFeature
+	{
 		Tectonics,
 		CollisionCheck,
-		ClearAndShrink,
 		Volcanism,
 		MORB,
+		Erosion,
 		Unused
 	}
 
@@ -31,10 +33,11 @@ namespace Orogeny {
 		PlatePerimeterPoints,
 		EventMarkers,
 		Convection,
-		Unused
+		PlateBoundaries
 	}
 
-	public class UserInterface : MonoBehaviour {
+	public class UserInterface : MonoBehaviour
+	{
 		public Transform planet;
 		public TextMeshProUGUI fps;
 		public TextMeshProUGUI latLon;
@@ -77,12 +80,19 @@ namespace Orogeny {
 		private bool[] displayFeatures;
 		private bool isPlaying;
 
-        private Vector2 dragOrigin = Vector2.zero;
+		private Vector2 dragOrigin = Vector2.zero;
 
 		private float lonOffset = 164;
 		private float lonOffsetBase = 164;
 
-		void Awake() { // Awake so this will be initialized before anything else
+		private string FileSaveName = "";
+		private string FileLoadName = "";
+
+		private bool convectionToggleState = true;
+
+
+		void Awake()
+		{ // Awake so this will be initialized before anything else
 			InitToggles();
 
 			SetPlaying(false);
@@ -90,20 +100,26 @@ namespace Orogeny {
 			InvokeRepeating(nameof(UpdateFPS), 1, 0.5f);
 		}
 
-		void UpdateFPS() {
-			for (int i = 4; i > 0; i--) {
+		void UpdateFPS()
+		{
+			for (int i = 4; i > 0; i--)
+			{
 				lastFrames[i] = lastFrames[i - 1];
 			}
 			lastFrames[0] = Time.frameCount;
 			fps.text = "FPS: " + (Time.frameCount - lastFrames[4]) / 2.5f;
 		}
 
-		void LateUpdate() {
+		void LateUpdate()
+		{
 			float multiplier = 2;
 
-			if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) {
+			if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+			{
 				multiplier = 8;
-			} else if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl)) {
+			}
+			else if (Input.GetKey(KeyCode.LeftControl) || Input.GetKey(KeyCode.RightControl))
+			{
 				multiplier = 0.5f;
 			}
 
@@ -115,7 +131,8 @@ namespace Orogeny {
 			var destination = here - dir *
 				(here - planet.transform.position).normalized * hopLength;
 
-			if (dir < 0 || (destination - here).magnitude < here.magnitude) {
+			if (dir < 0 || (destination - here).magnitude < here.magnitude)
+			{
 				this.transform.position = destination;
 			}
 
@@ -123,7 +140,7 @@ namespace Orogeny {
 			this.transform.RotateAround(planet.transform.position,
 										Camera.main.transform.up,
 										Input.GetAxis("Horizontal") * multiplier);
-			
+
 			// Up/down arrows
 			this.transform.RotateAround(planet.transform.position,
 										Camera.main.transform.right,
@@ -138,13 +155,14 @@ namespace Orogeny {
 			UpdateLatLon();
 		}
 
-		public void MouseRotation(float x, float y) {
+		public void MouseRotation(float x, float y)
+		{
 			float scale = 0.4f;
 
 			this.transform.RotateAround(planet.transform.position,
 										Camera.main.transform.up,
 										-x * scale);
-			
+
 			this.transform.RotateAround(planet.transform.position,
 										Camera.main.transform.right,
 										 y * scale);
@@ -152,11 +170,13 @@ namespace Orogeny {
 			UpdateLatLon();
 		}
 
-		public void SetLonOffset(float _lonOffset) {
+		public void SetLonOffset(float _lonOffset)
+		{
 			lonOffset = normalizeLongitude(-(_lonOffset - 90)); // spooky magic numbers
 		}
 
-		void UpdateLatLon() {
+		void UpdateLatLon()
+		{
 			var latDir = "N";
 			var lonDir = "E";
 			(float lon, float lat) = MapProjection.Vector2Geodetic(this.transform.position);
@@ -164,18 +184,20 @@ namespace Orogeny {
 			// Lat 0 = N, 180 = S
 			lat -= 90;
 			lat = (int)lat;
-			if (lat > 0) {
+			if (lat > 0)
+			{
 				latDir = "S";
 			}
 			lat = Mathf.Abs(lat);
 
 			// [-180, 180]
 			// Lon < 0 = E, > 0 = W 
-	        // Default camera position == 0,0 no matter what the coordinate system says
+			// Default camera position == 0,0 no matter what the coordinate system says
 			lon = (lon - lonOffset);
 			lon = normalizeLongitude(lon);
 			lon = (int)lon;
-			if (lon >= 0) {
+			if (lon >= 0)
+			{
 				lonDir = "W";
 			}
 			lon = Mathf.Abs(lon);
@@ -183,30 +205,37 @@ namespace Orogeny {
 			latLon.text = latDir + " " + (int)lat + "°, " + lonDir + " " + (int)lon + "°";
 		}
 
-		private float normalizeLongitude(float lon) {
-			if (lon < -180) {
+		private float normalizeLongitude(float lon)
+		{
+			if (lon < -180)
+			{
 				lon = 180 - (-180 - lon);
 			}
 
-			if (lon > 180) {
+			if (lon > 180)
+			{
 				lon = -180 - (180 - lon);
 			}
 
 			return lon;
 		}
 
-		public bool IsPlaying() {
+		public bool IsPlaying()
+		{
 			return isPlaying;
 		}
 
-		public void TriggerBreakpoint(Breakpoint bp) {
-			if (IsBreakpointOn(bp)) {
+		public void TriggerBreakpoint(Breakpoint bp)
+		{
+			if (IsBreakpointOn(bp))
+			{
 				SetPlaying(false);
 				Debug.Log("Breakpoint triggered: " + bp);
 			}
 		}
 
-		private void SetPlaying(bool value) {
+		private void SetPlaying(bool value)
+		{
 			isPlaying = value;
 			pauseButtonImage.enabled = value;
 			playButtonImage.enabled = !value;
@@ -259,29 +288,19 @@ namespace Orogeny {
 				displayFeatures[i] = displayFeatureToggles[i].isOn;
 			}
 
-			SetAllPlateDisplay(false);
-
-			bool foundPlateSolo = false;
 			KeyCode[] keycodes = new KeyCode[] { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6, KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9, KeyCode.Alpha0 };
 			for (var i = 0; i < keycodes.Length; i++)
 			{
-				if (Input.GetKey(keycodes[i]))
+				if (Input.GetKeyDown(keycodes[i]))
 				{
-					displayPlateToggles[i] = true;
-					foundPlateSolo = true;
+					displayPlateToggles[i] = !displayPlateToggles[i];
 					break;
 				}
 			}
 
-			if (!foundPlateSolo)
-				SetAllPlateDisplay(true);
-		}
-
-		private void SetAllPlateDisplay(bool val)
-		{			
-			for (var i = 0; i < displayPlateToggles.Length; i++)
+			if (Input.GetKeyDown(KeyCode.F1))
 			{
-				displayPlateToggles[i] = val;
+				convectionToggleState = !convectionToggleState;
 			}
 		}
 
@@ -290,20 +309,52 @@ namespace Orogeny {
 			return subsystemFeatures[(int)rf];
 		}
 
-		public bool IsBreakpointOn(Breakpoint bp) {
+		public bool IsBreakpointOn(Breakpoint bp)
+		{
 			return breakpoints[(int)bp];
 		}
 
-		public bool IsDisplayFeatureOn(DisplayFeature gf) {
+		public bool IsDisplayFeatureOn(DisplayFeature gf)
+		{
 			return displayFeatures[(int)gf];
 		}
 
 		public bool IsDisplayPlateOn(int plate)
 		{
 			if (plate < 0 || plate > 9)
-				return false;
+				return true;
 
 			return displayPlateToggles[plate];
+		}
+
+		public bool IsFileSaveRequested()
+		{
+			return FileSaveName.Length > 0;
+		}
+
+		public bool IsFileLoadRequested()
+		{
+			return FileLoadName.Length > 0;
+		}
+
+		public string GetFileSaveName()
+		{
+			return FileSaveName;
+		}
+
+		public string GetFileLoadName()
+		{
+			return FileLoadName;
+		}
+
+		public void ClearFileSaveName()
+		{
+			FileSaveName = "";
+		}
+
+		public void ClearFileLoadName()
+		{
+			FileLoadName = "";
 		}
 
 		public void HandleResetButtonClick()
@@ -321,16 +372,50 @@ namespace Orogeny {
 										lonOffset - lonOffsetBase);
 		}
 
-		public void HandlePlayButtonClick() {
+		public void HandlePlayButtonClick()
+		{
 			//Debug.Log("Play button clicked");
 
 			SetPlaying(true);
 		}
 
-		public void HandlePauseButtonClick() {
+		public void HandlePauseButtonClick()
+		{
 			//Debug.Log("Pause button clicked");
 
 			SetPlaying(false);
+		}
+
+		public void HandleSaveButtonClick()
+		{
+			var path = EditorUtility.SaveFilePanel(
+				"Save simulation state",
+				"",
+				"orogeny.json",
+				"json");
+
+			if (path.Length != 0)
+			{
+				FileSaveName = path;
+			}
+		}
+
+		public void HandleLoadButtonClick()
+		{
+			string path = EditorUtility.OpenFilePanel(
+				"Load similation state (current state will be lost)",
+				"",
+				"json");
+
+			if (path.Length != 0)
+			{
+				FileLoadName = path;
+			}
+		}
+
+		public bool GetConvectionToggleState()
+		{
+			return convectionToggleState;
 		}
 	}
 }

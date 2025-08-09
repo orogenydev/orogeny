@@ -44,7 +44,11 @@ class prefab_saver
 		AssetDatabase.CreateAsset(m1, "Assets/Planet_editor_Unity5/Resources/savedMesh/" + name +"_M" + ".asset"); // saving mesh as asset
   
   
-		var prefab =PrefabUtility.CreateEmptyPrefab("Assets/Planet_editor_Unity5/Resources/savedMesh/" + name+ ".prefab");//creating empty prefab
+  
+/*
+		The following was causing warnings. I don't think it is actually being used, so commenting out for now...
+		
+ 		var prefab =PrefabUtility.CreateEmptyPrefab("Assets/Planet_editor_Unity5/Resources/savedMesh/" + name+ ".prefab");//creating empty prefab
 		var material_pl = go.GetComponent<Renderer>().material;
 		var material_gl = go.transform.Find("Glow").GetComponent<Renderer>().material;
 		var material_cl = go.transform.Find("clouds_sphere").GetComponent<Renderer>().material;
@@ -61,7 +65,7 @@ class prefab_saver
 		go.transform.Find("clouds_sphere").GetComponent<Renderer>().material=Resources.Load("savedMesh/mat_cl_"+name) as Material;//loading materials and assigning them to a prefab
 		go.transform.Find("water_sphere").GetComponent<Renderer>().material=Resources.Load("savedMesh/mat_w_"+name) as Material;//loading materials and assigning them to a prefab
 		
-		PrefabUtility.ReplacePrefab(go, prefab);
+		PrefabUtility.ReplacePrefab(go, prefab); */
 		
 	
 
