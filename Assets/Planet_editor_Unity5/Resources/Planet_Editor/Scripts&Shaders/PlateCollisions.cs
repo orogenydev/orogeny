@@ -8,13 +8,13 @@ using Unity.Jobs;
 
 namespace Orogeny.Plates {
     public class PlateCollisions {
-        public static void PerimeterCheck(List<Plate> plates) {
+        public static void SubductionCheck(List<Plate> plates, SubductionTracker subductionTracker) {
             foreach (var plate in plates) {
-                PerimeterCheck(plate);
+                SubductionCheck(plate, subductionTracker);
             }
         }
 
-        public static void PerimeterCheck(Plate plate) {
+        public static void SubductionCheck(Plate plate, SubductionTracker subductionTracker) {
             if (plate.gameObject.layer != LayerMask.NameToLayer("Plates"))
                 return;
 
@@ -86,8 +86,8 @@ namespace Orogeny.Plates {
                             continue;
                         }
 
-                        plate.ProcessCollision(hit.point, perimeterIndex, otherPlate, v0, v1, v2);
-                        otherPlate.ProcessCollision(hit.point, v0, v1, v2, plate, perimeterIndex);
+                        plate.ProcessCollision(hit.point, perimeterIndex, otherPlate, v0, v1, v2, subductionTracker);
+                        otherPlate.ProcessCollision(hit.point, v0, v1, v2, plate, perimeterIndex, subductionTracker);
                     }
                 }
             }

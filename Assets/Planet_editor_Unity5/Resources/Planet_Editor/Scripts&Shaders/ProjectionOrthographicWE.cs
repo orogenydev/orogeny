@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace Orogeny.Maps {
     public class ProjectionOrthographicWE : IProjection {
-        private float r = 95;
+        private float r = 120;
         private float lonRadCenter = Mathf.PI / 2;
         private float latRadCenter = 0f;
 

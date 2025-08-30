@@ -5,6 +5,8 @@ using UnityEngine;
 using Unity.Collections;
 using Unity.Jobs;
 
+using Orogeny.Maps;
+
 namespace Orogeny.Plates {
     public partial class Plate : MonoBehaviour
     {
@@ -13,11 +15,8 @@ namespace Orogeny.Plates {
         public int plateNumber = 0;
         private System.Random rand;
 
-        private Vector3 centerPoint;
-        private float size;
-        private float centralHeight;
-
         private Vector3 netForce;
+        private Vector3 lockedScaledNetForce = Vector3.zero;
         private Vector3 collisionForce;
         private Color color;
 
@@ -33,10 +32,12 @@ namespace Orogeny.Plates {
 
         private Vector3[] vertexNext;
         private Vector3[] vertexPrev;
-        private Color[] vertexActions;
 
         private Vector3 prevNetScaledForce = Vector3.zero;
-        public bool[] vertexSubducting;
+        public SubductionState[] vertexSubductionState;
+        private Queue<List<Vector3>> historicalMORBs;
+        private List<Vector3> recentMORBs;
+        private List<Mesh> tornOffMeshes;
 
         private List<List<int>> modificationCohorts;
 
@@ -53,14 +54,9 @@ namespace Orogeny.Plates {
                             Color _color,
                             UserInterface _ui)
         {
-
-            centerPoint = _centerPoint;
-            size = _size;
-            centralHeight = _centralHeight;
-
             CommonInitialization(_plateNumber, _name, _mesh, _color, _ui);
 
-            var centerV = Plate.FindClosestVertex(mesh.vertices, _centerPoint);
+            var centerV = FindClosestVertex(_centerPoint);
             AddTerrainToTheTerrane(centerV, new List<Plate>());
         }
 
@@ -76,9 +72,10 @@ namespace Orogeny.Plates {
             plateNumber = _plateNumber;
             name = _name;
             color = _color;
-            ui = _ui;            
+            ui = _ui;
 
-            rand = new System.Random(42);            
+            tornOffMeshes = new List<Mesh>();
+            rand = new System.Random(42);
         }
 
         public bool ExpandCrust(List<Plate> plates)
@@ -109,54 +106,78 @@ namespace Orogeny.Plates {
         {
             vertexNext = new Vector3[mesh.vertices.Length];
             vertexPrev = new Vector3[mesh.vertices.Length];
-            vertexActions = new Color[mesh.vertices.Length];
         }
 
         private void AddTerrainToTheTerrane(int v, List<Plate> plates)
         {
-            var vertices = mesh.vertices;
-            var uv2 = mesh.uv2;
-
+            // Only claim a vertex for this plate if it is virtual in all other plates
             if (!plates.All(p => IsVirtual(p.mesh.vertices[v])))
             {
                 return;
             }
 
-            var thickness = Plate.seaFloorRadius + GetNewCrustBumpiness();
-            float distance = ((vertices[v].normalized * Plate.seaFloorRadius) - centerPoint).magnitude;
-
-            if (distance < size)
-            {
-                float scale = (size - distance) / size;
-                float continentalHeight = centralHeight * scale * scale;
-
-                if (centralHeight > 0)
-                {
-                    thickness += Plate.continentalCrustThickness + continentalHeight;
-                }
-                else
-                {
-                    thickness += continentalHeight;
-                }
-            }
-
-            vertices[v] = vertices[v].normalized * thickness;
+            plateVertices = mesh.vertices;
+            var uv2 = mesh.uv2;
 
             // XXX DEV HACK
-            uv2[v] = GetPlateNumber() == 0 ? new Vector2(-framesToCool * 0.01f, -framesToCool * 0.01f) : new Vector2(0, 0);
+            var frameCountAge = -framesToCool / (GetPlateNumber() + 1);
+            // var frameCountAge = -framesToCool;
+            // if (plateNumber == 0)
+            // {
+            //     frameCountAge = -framesToCool;
+            // }
+            // if (plateNumber == 1)
+            // {
+            //     frameCountAge = 0;
+            // }
 
-            mesh.vertices = vertices;
+            var thickness = GetBumpyNewCrust() + hotCrustThicknessBonus * (1 - Mathf.Abs(frameCountAge) / framesToCool);
+            plateVertices[v] = plateVertices[v].normalized * thickness;
+            uv2[v] = new Vector2(frameCountAge, 0);
+
+            mesh.vertices = plateVertices;
             mesh.uv2 = uv2;
 
             wavefrontVertices.Add(v);
         }
 
-        private float GetNewCrustBumpiness()
+        private float GetBumpyNewCrust()
         {
-            return ((float)rand.NextDouble() - 0.25f) / 6;
+            // Range seaFloorMinNormalRadius to seaFloorMaxNormalRadius
+            var range = seaFloorMaxNormalRadius - seaFloorMinNormalRadius;
+            return seaFloorMinNormalRadius + (float)rand.NextDouble() * range;
         }
 
-        private void ProcessMesh(Shader shader)
+        public void AddBump(float lon, float lat, float size, float height)
+        {
+            var position = MapProjection.Geodetic2Vector(lon, lat).normalized * Plate.seaFloorRadius;
+            var v = FindClosestVertex(position);
+            AddBump(v, size, height);
+        }
+
+        public void AddBump(int centerVertex, float size, float height)
+        {
+            plateVertices = mesh.vertices;
+
+            for (var v = 0; v < plateVertices.Count(); v++)
+            {
+                float dist = (plateVertices[v] - plateVertices[centerVertex]).magnitude;
+
+                if (dist < size && !perimeter.Contains(v))
+                {
+                    float scale = (size - dist) / size;
+                    float continentalHeight = height * scale * scale;
+
+                    var thickness = Plate.continentalCrustThickness + continentalHeight;
+                    plateVertices[v] = plateVertices[v].normalized * (plateVertices[v].magnitude + thickness);
+                }
+            }
+            
+            mesh.vertices = plateVertices;
+            mesh.RecalculateBounds();
+        }
+
+        public void InitializeStuff()
         {
             plateVertices = mesh.vertices;
             for (var v = 0; v < plateVertices.Length; v++)
@@ -166,6 +187,26 @@ namespace Orogeny.Plates {
                     realVertices.Add(v);
                 }
             }
+
+            vertexSubductionState = new SubductionState[mesh.vertices.Length];
+            for (int v = 0; v < vertexSubductionState.Length; v++)
+            {
+                vertexSubductionState[v] = SubductionState.None;
+            }
+
+            historicalMORBs = new Queue<List<Vector3>>();
+            for (int i = 0; i < 25; i++)
+            {
+                historicalMORBs.Enqueue(new List<Vector3>());
+            }
+            recentMORBs = new List<Vector3>();
+
+            perimeter = ExtractPerimeter();
+            perimeterMarkers = CreatePerimeterMarkers(gameObject, color);
+        }
+
+        private void ProcessMesh(Shader shader)
+        {
             mesh.RecalculateBounds();
 
             var collider = gameObject.AddComponent<MeshCollider>();
@@ -179,15 +220,6 @@ namespace Orogeny.Plates {
             renderer.material.shader = shader;
             renderer.material.SetVector("_WireframeColor", color);
             renderer.enabled = false;
-
-            vertexSubducting = new bool[mesh.vertices.Length];
-            for (int v = 0; v < vertexSubducting.Length; v++)
-            {
-                vertexSubducting[v] = false;
-            }
-
-            perimeter = ExtractPerimeter();
-            perimeterMarkers = CreatePerimeterMarkers(gameObject, color);
         }
 
         public Mesh GetMesh()
@@ -198,6 +230,12 @@ namespace Orogeny.Plates {
         public Vector3[] GetPlateVertices()
         {
             return plateVertices;
+        }
+
+        public void SetPlateVertices(Vector3[] vertices)
+        {
+            plateVertices = vertices;
+            mesh.vertices = vertices;
         }
 
         public Color GetColor()
@@ -217,33 +255,53 @@ namespace Orogeny.Plates {
 
         public List<int> GetExtendedPerimeter(int depth)
         {
-            var extendedPerimeter = new List<int>(perimeter);
+            var extendedPerimeter = new Dictionary<int, bool>();
+            perimeter.ForEach(v => extendedPerimeter[v] = true);
 
             for (int i = 0; i < depth; i++)
             {
-                var additions = new List<int>();
-
-                foreach (var v in extendedPerimeter)
+                foreach (var v in extendedPerimeter.Keys.ToList())
                 {
                     foreach (var n in neighbors[v])
                     {
                         if (!IsVirtual(plateVertices[n]))
                         {
-                            additions.Add(n);
+                            extendedPerimeter[n] = true;
                         }
-                    }
-                }
-
-                foreach (var v in additions)
-                {
-                    if (!extendedPerimeter.Contains(v))
-                    {
-                        extendedPerimeter.Add(v);
                     }
                 }
             }
 
-            return extendedPerimeter;
+            return extendedPerimeter.Keys.ToList();
+        }
+
+        public Queue<List<Vector3>> GetHistoricalMORBs()
+        {
+            return historicalMORBs;
+        }
+
+        public void AddRidgePush(Vector3 point)
+        {
+            recentMORBs.Add(point);
+        }
+
+        public void ArchiveRecentMORBs()
+        {
+            historicalMORBs.Dequeue();
+            historicalMORBs.Enqueue(recentMORBs);
+            recentMORBs = new List<Vector3>();
+        }
+
+        public void AddTornMesh(Mesh mesh)
+        {
+            tornOffMeshes.Add(mesh);
+        }
+
+        public List<Mesh> GetTornMeshes()
+        {
+            var t = tornOffMeshes;
+            tornOffMeshes = new List<Mesh>();
+            return t;
         }
 
         public int GetPlateRenderCount()
@@ -262,7 +320,7 @@ namespace Orogeny.Plates {
             collisionForce = Vector3.zero;
         }
 
-        public void AddForce(Vector3 point, Vector3 force)
+        public void AddForce(Vector3 force)
         {
             netForce += force;
         }
@@ -274,17 +332,29 @@ namespace Orogeny.Plates {
 
         public Vector3 GetScaledNetForce()
         {
-            // XXX DEV HACK
-            if (plateNumber == 0 || plateNumber == 9)
+            if (lockedScaledNetForce.magnitude > 0)
             {
-                return (ui.GetConvectionToggleState() ? Vector3.left : Vector3.up) * 1.0f;
+                return lockedScaledNetForce;
             }
-            else
-            {
-                return Vector3.zero;
-            }
-            
-            //return netForce / mesh.vertices.Length * 4.0f;
+
+            // if (plateNumber > 0)
+            // {
+            //     return Vector3.zero;
+            // }
+
+            return GetNetForce() / mesh.vertices.Length;
+        }
+
+        // For torn off subducting plates that need to just keep going
+        public void LockScaledNetForce(Vector3 force)
+        {
+            lockedScaledNetForce = force;
+        }
+
+        public Quaternion GetRotation()
+        {
+            var axis = GetScaledNetForce();
+            return Quaternion.AngleAxis(axis.magnitude, axis);
         }
 
         public Vector3 GetPrevScaledNetForce()
@@ -299,28 +369,28 @@ namespace Orogeny.Plates {
 
         public void ApplyForces(int phase)
         {
-            float scale = 0.3f;
-
-            var closest = (int)plateVertices.Length / 2; // ridiculous hack
-            var force = GetScaledNetForce();
-            var q = CreateVertexRotation(force, mesh.normals[closest], scale);
+            var q = GetRotation();
 
             for (int i = phase; i < plateVertices.Length; i += 2)
             {
-                var datumIndex = FindClosestPerimeter(plateVertices[i]);
-                if (datumIndex < 0)
-                    datumIndex = i;
-
-                var datum = plateVertices[datumIndex];
-                var dist1 = (datum - plateVertices[i]).magnitude;
                 var point = q * plateVertices[i];
-                var dist2 = (datum - point).magnitude;
-                if (vertexSubducting[i])
+
+                if (vertexSubductionState[i] == SubductionState.Active)
                 {
+                    var datumIndex = FindClosestPerimeter(plateVertices[i]);
+                    if (datumIndex < 0)
+                        datumIndex = i;
+
+                    // Measure movement from the nearest perimeter point
+                    // This lets us scale the subduction angle (if any) according to age/density better
+                    var datum = plateVertices[datumIndex];
+                    var dist1 = (datum - plateVertices[i]).magnitude;
+                    var dist2 = (datum - point).magnitude;
+
                     var dist = Mathf.Abs(dist1 - dist2);
                     var age = Mathf.Clamp(plateRenderCount - mesh.uv2[i].x, 0, framesToCool);
-                    // Angle is scaled between 20 and 80 degrees, 
-                    var angle = 20.0f + 60.0f * age / framesToCool;
+                    // Angle is scaled between 30 and 70 degrees, 
+                    var angle = 30.0f + 50.0f * age / framesToCool;
                     var drop = Mathf.Tan(angle * Mathf.Deg2Rad) * dist;
                     point = point.normalized * (point.magnitude - drop);
                 }
@@ -354,9 +424,31 @@ namespace Orogeny.Plates {
             collisionForce = GetScaledNetForce() - scaledOtherForce;
         }
 
-        public void SetMeshDisplay(bool value)
+        public void SetMeshDisplay(PlateMeshDisplayMode mode)
         {
-            gameObject.GetComponent<MeshRenderer>().enabled = value;
+            switch (mode)
+            {
+                case PlateMeshDisplayMode.None:
+                    gameObject.GetComponent<MeshRenderer>().enabled = false;
+                    break;
+                case PlateMeshDisplayMode.Surface:
+                    gameObject.GetComponent<MeshRenderer>().enabled = true;
+                    gameObject.GetComponent<MeshRenderer>().material.SetFloat("_CullRadius", trenchRadius);
+                    break;
+                case PlateMeshDisplayMode.Subducting:
+                    gameObject.GetComponent<MeshRenderer>().enabled = true;
+                    gameObject.GetComponent<MeshRenderer>().material.SetFloat("_CullRadius", mohoRadius);
+                    break;
+                case PlateMeshDisplayMode.Entire:
+                    gameObject.GetComponent<MeshRenderer>().enabled = true;
+                    gameObject.GetComponent<MeshRenderer>().material.SetFloat("_CullRadius", coreRadius - 1);
+                    break;
+            }
+        }
+
+        public void SetDeepMeshDisplay(bool value)
+        {
+            gameObject.GetComponent<MeshRenderer>().material.SetFloat("_CullRadius", value ? 10.0f : 13.0f);
         }
 
         public Magma AddMagma(Vector3 position, MagmaType type)
@@ -382,7 +474,7 @@ namespace Orogeny.Plates {
         }
 
         // One of our perimeters vertices v has hit another triangle (v0, v1, v2) at point
-        public void ProcessCollision(Vector3 point, int v, Plate other, int v0, int v1, int v2)
+        public void ProcessCollision(Vector3 point, int v, Plate other, int v0, int v1, int v2, SubductionTracker subductionTracker)
         {
             ui.TriggerBreakpoint(Breakpoint.AnyCollision);
             eventsCollision.Add(CreateEventMarker(gameObject, new Color(0f, 0f, 1.0f, 0.5f), point, 0.5f, "EventMarkers", "EventCollision"));
@@ -395,27 +487,27 @@ namespace Orogeny.Plates {
 
             if (localContinental && otherContinental)
             {
-                Debug.Log("!!! 1");
+                //Debug.Log("!!! 1");
                 //ContinentContinentCollision(point, other);
             }
             else if (!localContinental && otherContinental)
             {
-                Debug.Log("!!! 2");
-                //OceanicContinentCollision(point, other);
+                //Debug.Log("!!! 2");
+                OceanicContinentCollision(v, other, v0, v1, v2, subductionTracker);
             }
             else if (localContinental && !otherContinental)
             {
-                Debug.Log("!!! 3");
+                //Debug.Log("!!! 3");
                 //ContinentOceanicCollision(point, other);
             }
             else
             {
-                OceanicOceanicCollision(v, other, v0, v1, v2);
+                OceanicOceanicCollision(v, other, v0, v1, v2, subductionTracker);
             }
         }
 
         // One of our triangles (v0, v1, v2) has been hit by another perimeter vertex v at point
-        public void ProcessCollision(Vector3 point, int v0, int v1, int v2, Plate other, int v)
+        public void ProcessCollision(Vector3 point, int v0, int v1, int v2, Plate other, int v, SubductionTracker subductionTracker)
         {
             ui.TriggerBreakpoint(Breakpoint.AnyCollision);
             eventsCollision.Add(CreateEventMarker(gameObject, new Color(0f, 0f, 1.0f, 0.5f), point, 0.5f, "EventMarkers", "EventCollision"));
@@ -428,22 +520,22 @@ namespace Orogeny.Plates {
 
             if (localContinental && otherContinental)
             {
-                Debug.Log("!!! 4");
+                //Debug.Log("!!! 4");
                 //ContinentContinentCollision(point, other);
             }
             else if (!localContinental && otherContinental)
             {
-                Debug.Log("!!! 5");
+                //Debug.Log("!!! 5");
                 //OceanicContinentCollision(point, other);
             }
             else if (localContinental && !otherContinental)
             {
-                Debug.Log("!!! 6");
+                //Debug.Log("!!! 6");
                 //ContinentOceanicCollision(point, other);
             }
             else
             {
-                OceanicOceanicCollision(v0, v1, v2, other, v);
+                OceanicOceanicCollision(v0, v1, v2, other, v, subductionTracker);
             }
         }
 
@@ -479,7 +571,6 @@ namespace Orogeny.Plates {
             {
                 vertexNext[i] = plateVertices[i];
                 vertexPrev[i] = plateVertices[i];
-                vertexActions[i] = color;
             }
 
             modificationCohorts = new List<List<int>>();
@@ -504,9 +595,39 @@ namespace Orogeny.Plates {
 
                 // Check to see if we can unsquish
                 var collider = gameObject.GetComponent<MeshCollider>();
-                if (GetVertexSquishedness(v) > 0.01 && IsOnlyVirtualAtPoint(vertexHomes[v], collider, vertexSquishAllowance))
+                if (GetVertexSquishedness(v) > 0.01 && IsClearForMORBingAtPoint(vertexHomes[v], collider, vertexSquishAllowance))
                 {
-                    SquishVertex(v, vertexHomes[v], false);
+                    //SquishVertex(v, vertexHomes[v], false);
+                    ResetVertexSquishedness(v);
+                }
+
+                // Check to see if the vertex can start sinking
+                if (vertexSubductionState[v] == SubductionState.Initiated)
+                {
+                    var (cPlate, v0, v1, v2) = IsFullyCoveredByOtherPlate(plateVertices[v], collider);
+                    if (cPlate != null)
+                    {
+                        vertexSubductionState[v] = SubductionState.Active;
+
+                        // If any mass is left after trenchification, obduct it over to the overriding vertices
+                        if (plateVertices[v].magnitude > trenchRadius)
+                        {
+                            var targets = cPlate.GetNonPerimeterNeighbors(new List<int> { v0, v1, v2 });
+                            var massShare = (plateVertices[v].magnitude - trenchRadius) / targets.Count();
+
+                            var cVertices = cPlate.GetPlateVertices();
+                            foreach (var target in targets)
+                            {
+                                cVertices[target] = cVertices[target].normalized * (cVertices[target].magnitude + massShare);
+                            }
+                            cPlate.SetPlateVertices(cVertices);
+
+                            var q = GetRotation();
+                            cPlate.DoMassSlumping(targets, q);
+
+                            eventsMORB.Add(CreateEventMarker(gameObject, new Color(0.0f, 1f, 1f, 0.5f), plateVertices[v], 1f, "EventMarkers", "EventTrenchClogging"));
+                        }
+                    }
                 }
 
                 // Apply thermal contraction
@@ -524,7 +645,7 @@ namespace Orogeny.Plates {
             {
                 RemoveReal(v);
                 RemoveFromPerimeter(v);
-                vertexSubducting[v] = false;
+                vertexSubductionState[v] = SubductionState.None;
                 plateVertices[v] = plateVertices[v].normalized * Plate.coreRadius;                        
             }
 
@@ -647,9 +768,8 @@ namespace Orogeny.Plates {
             mesh.RecalculateBounds();
         }
 
-        public void MORBingTime()
+        public void MORBingTime(SubductionTracker subductionTracker)
         {
-            Vector2[] uv2 = mesh.uv2;
             ClearEvents(eventsMORB);
 
             var collider = gameObject.GetComponent<MeshCollider>();
@@ -664,48 +784,60 @@ namespace Orogeny.Plates {
                     var validNeighborCount = ValidNeighborCount(n);
 
                     // Is this a potential MORBing site?
-                    if (IsVirtual(plateVertices[n]) &&
-                        IsOnlyVirtualAtPoint(plateVertices[n], collider) &&
-                        validNeighborCount > 1)
+                    // Include subducting-but-not-virtual vertices because if a plate runs long enough, 
+                    // previously subducted areas will eventually start to be re-exposed.
+                    // (This happens even quicker if the plate boundary passes though one of its own pivot points!)
+                    // Check both current and home position to account for squishing, can result in anamolous MORBing in a subduction context otherwise
+                    // Lowering check below trenchRadius to prevent anomalous MORBing in a subduction zone, kind of hacky
+                    if (plateVertices[n].magnitude < (trenchRadius - 2.0f) &&
+                        validNeighborCount > 1 &&
+                        IsClearForMORBingAtPoint(plateVertices[n], collider) &&
+                        IsClearForMORBingAtPoint(vertexHomes[n], collider) &&
+                        !AreSubductingPlatesNearby(plateVertices[n], collider, subductionTracker))
                     {
-                        var newCrustPos = plateVertices[n].normalized * (Plate.seaFloorRadius  + GetNewCrustBumpiness() + Plate.hotCrustThicknessBonus);
-
                         // Need to check halfway between this potential new vertex and all its existing valid neighbors, to catch intruding spikes of other plates
                         var clearAtHalfwayPoints = true;
                         foreach (var n2 in neighbors[n])
                         {
-                            if (IsOceanicOrContinental(plateVertices[n2]))
+                            if (clearAtHalfwayPoints && IsOceanicOrContinental(plateVertices[n2]))
                             {
-                                var midpoint = (newCrustPos + plateVertices[n2]) / 2;
-                                clearAtHalfwayPoints &= IsOnlyVirtualAtPoint(midpoint, collider);
+                                var midpoint = (plateVertices[n] + plateVertices[n2]) / 2;
+                                clearAtHalfwayPoints &= IsClearForMORBingAtPoint(midpoint, collider, 0.1f);
                             }
                         }
 
                         if (!clearAtHalfwayPoints)
                             continue;
 
-                        // Add stochastic element based on number of neighboring perimeter vertices
+                        // Add stochastic factor based on number of neighboring perimeter vertices
                         // This should help concentrate growth in concavities, and maybe help even out which plate gets the growth at a spreading ridge
                         var neighborFactor = (double)validNeighborCount / (double)neighborCount;
                         if (rand.NextDouble() > neighborFactor * neighborFactor)
                             continue;
 
-                        plateVertices[n] = newCrustPos;
-                        uv2[n] = new Vector2(plateRenderCount, plateRenderCount);
-                        vertexSubducting[n] = false;
-                        realVertices.Add(n);
-                        AddToPerimeter(n);
-                        CheckNeighborPerimeterStatus(n);
+                        ResurrectVertex(n);
 
-                        mesh.vertices = plateVertices;
-                        mesh.uv2 = uv2;
-                        mesh.RecalculateBounds();
+                        // Sometimes anomalous subduction in a spreading ridge will leave a little perimeter pocket of lowered, pre-subducted crust
+                        foreach (var n2 in GetExtendedNeighbors(n, 1))
+                        {
+                            if (vertexSubductionState[n2] != SubductionState.None &&
+                            IsClearForMORBingAtPoint(plateVertices[n2], collider) &&
+                            IsClearForMORBingAtPoint(vertexHomes[n2], collider))
+                            {
+                                plateVertices[n2] = vertexHomes[n2] * seaFloorMinNormalRadius;
+                                vertexSubductionState[n2] = SubductionState.None;
+                                CheckForPerimeterness(n2);
+                                CheckNeighborsForPerimeterness(n2);
+                            }
+                        }
 
                         newMORBS = true;
-                        eventsMORB.Add(CreateEventMarker(gameObject, new Color(1.0f, 0f, 0f, 0.5f), newCrustPos, 1f, "EventMarkers", "EventMORB"));
+                        Plate.DoRegionalRidgePush(plateVertices[n]);
+                        eventsMORB.Add(CreateEventMarker(gameObject, new Color(1.0f, 0f, 0f, 0.5f), plateVertices[n], 1f, "EventMarkers", "EventMORB"));
                     }
                 }
             }
+            mesh.RecalculateBounds();
 
             if (newMORBS)
             {

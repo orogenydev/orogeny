@@ -10,6 +10,12 @@ using Unity.Burst;
 using Orogeny.Plates;
 
 namespace Orogeny.Maps {
+    enum MapType
+    {
+        Geoid,
+        Plates
+    }
+
     public class MapProjection : MonoBehaviour
     {
         public Transform planet;
@@ -49,14 +55,14 @@ namespace Orogeny.Maps {
         private int curDivision = 0;
         private JobHandle jobHandle;
         private List<NativeArray<RaycastCommand>> raycastCommands;
-        private List<NativeArray<RaycastCommand>> raycastCommandsWithMarkers;
         private List<NativeArray<RaycastHit>> raycastHits;
         private List<NativeArray<RaycastCommand>> raycastCommandsPlates;
         private List<NativeArray<RaycastHit>> raycastHitsPlates;
 
         private UserInterface ui;
 
-        public static Vector3 Geodetic2Vector(float lon, float lat) {
+        public static Vector3 Geodetic2Vector(float lon, float lat)
+        {
             var lonRad = lon * Mathf.Deg2Rad;
             var latRad = (Mathf.PI / 2) - lat * Mathf.Deg2Rad; // [0, pi]
 
@@ -67,24 +73,26 @@ namespace Orogeny.Maps {
             return new Vector3(x, y, z).normalized;
         }
 
-        public static (float, float) Vector2Geodetic(Vector3 position) {
+        public static (float, float) Vector2Geodetic(Vector3 position)
+        {
             float lat = Mathf.Acos(position.y / position.magnitude) * Mathf.Rad2Deg;
-        	float lon = Mathf.Atan2(position.x, position.z) * Mathf.Rad2Deg;
+            float lon = Mathf.Atan2(position.x, position.z) * Mathf.Rad2Deg;
 
             return (lon, lat);
         }
 
-        void Start() {
+        void Start()
+        {
             InitProjections();
 
             raycastCommands = new List<NativeArray<RaycastCommand>>();
-            raycastCommandsWithMarkers = new List<NativeArray<RaycastCommand>>();
             raycastHits = new List<NativeArray<RaycastHit>>();
 
             raycastCommandsPlates = new List<NativeArray<RaycastCommand>>();
             raycastHitsPlates = new List<NativeArray<RaycastHit>>();
 
-            for (int i = 0; i < texture.width; i++) {
+            for (int i = 0; i < texture.width; i++)
+            {
                 for (int j = 0; j < texture.height; j++)
                 {
                     texture.SetPixel(i, j, Color.black);
@@ -97,15 +105,15 @@ namespace Orogeny.Maps {
             ui = mainCamera.GetComponent<UserInterface>();
         }
 
-        private void OnDestroy() {
+        private void OnDestroy()
+        {
             jobHandle.Complete();
-            foreach (var commandArray in raycastCommands) {
+            foreach (var commandArray in raycastCommands)
+            {
                 commandArray.Dispose();
             }
-            foreach (var commandArray in raycastCommandsWithMarkers) {
-                commandArray.Dispose();
-            }
-            foreach (var hitArray in raycastHits) {
+            foreach (var hitArray in raycastHits)
+            {
                 hitArray.Dispose();
             }
 
@@ -113,15 +121,18 @@ namespace Orogeny.Maps {
             {
                 commandArray.Dispose();
             }
-            foreach (var hitArray in raycastHitsPlates) {
+            foreach (var hitArray in raycastHitsPlates)
+            {
                 hitArray.Dispose();
             }
         }
 
-        private void InitProjections() {
+        private void InitProjections()
+        {
             List<string> options = new List<string>();
 
-            foreach (var projection in projections) {
+            foreach (var projection in projections)
+            {
                 options.Add(projection.GetName());
             }
 
@@ -139,8 +150,10 @@ namespace Orogeny.Maps {
             firstFrame = true;
         }
 
-        void Update() {
-            if (curProjection.GetName() == "None") {
+        void Update()
+        {
+            if (curProjection.GetName() == "None")
+            {
                 return;
             }
 
@@ -148,16 +161,16 @@ namespace Orogeny.Maps {
             var height = texture.height;
             var pointsPerDivision = width * height / divisions;
 
-            if (firstFrame) {
+            if (firstFrame)
+            {
                 InitializeColors();
 
-                foreach (var commandArray in raycastCommands) {
+                foreach (var commandArray in raycastCommands)
+                {
                     commandArray.Dispose();
                 }
-                foreach (var commandArray in raycastCommandsWithMarkers) {
-                    commandArray.Dispose();
-                }
-                foreach (var hitArray in raycastHits) {
+                foreach (var hitArray in raycastHits)
+                {
                     hitArray.Dispose();
                 }
 
@@ -165,12 +178,12 @@ namespace Orogeny.Maps {
                 {
                     commandArray.Dispose();
                 }
-                foreach (var hitArray in raycastHitsPlates) {
+                foreach (var hitArray in raycastHitsPlates)
+                {
                     hitArray.Dispose();
                 }
 
                 raycastCommands = new List<NativeArray<RaycastCommand>>();
-                raycastCommandsWithMarkers = new List<NativeArray<RaycastCommand>>();
                 raycastHits = new List<NativeArray<RaycastHit>>();
 
                 raycastCommandsPlates = new List<NativeArray<RaycastCommand>>();
@@ -179,14 +192,14 @@ namespace Orogeny.Maps {
                 for (var i = 0; i < divisions; i++)
                 {
                     raycastCommands.Add(new NativeArray<RaycastCommand>(pointsPerDivision, Allocator.Persistent));
-                    raycastCommandsWithMarkers.Add(new NativeArray<RaycastCommand>(pointsPerDivision, Allocator.Persistent));
                     raycastHits.Add(new NativeArray<RaycastHit>(pointsPerDivision, Allocator.Persistent));
 
                     raycastCommandsPlates.Add(new NativeArray<RaycastCommand>(pointsPerDivision, Allocator.Persistent));
                     raycastHitsPlates.Add(new NativeArray<RaycastHit>(pointsPerDivision, Allocator.Persistent));
                 }
 
-                for (int i = 0; i < width; i++) {
+                for (int i = 0; i < width; i++)
+                {
                     for (int j = 0; j < height; j++)
                     {
                         texture.SetPixel(i, j, Color.black);
@@ -198,20 +211,13 @@ namespace Orogeny.Maps {
                         {
                             continue;
                         }
-
                         var index = i * height + j;
 
                         var commandArray = raycastCommands[index / pointsPerDivision];
-                        var mask = LayerMask.GetMask("Geoid");
-                        commandArray[index % pointsPerDivision] = GetPointRaycast(point, mask);
-
-                        commandArray = raycastCommandsWithMarkers[index / pointsPerDivision];
-                        mask = LayerMask.GetMask("Geoid", "EventMarkers");
-                        commandArray[index % pointsPerDivision] = GetPointRaycast(point, mask);
+                        commandArray[index % pointsPerDivision] = GetPointRaycast(point, MapType.Geoid);
 
                         commandArray = raycastCommandsPlates[index / pointsPerDivision];
-                        mask = LayerMask.GetMask("Plates");
-                        commandArray[index % pointsPerDivision] = GetPointRaycast(point, mask);
+                        commandArray[index % pointsPerDivision] = GetPointRaycast(point, MapType.Plates);
                     }
                 }
 
@@ -221,17 +227,10 @@ namespace Orogeny.Maps {
 
             JobHandle handleMain;
             JobHandle handlePlates;
-            if (ui.IsDisplayFeatureOn(DisplayFeature.EventMarkers)) {
-                handleMain = RaycastCommand.ScheduleBatch(raycastCommandsWithMarkers[curDivision],
-                                                                raycastHits[curDivision],
-                                                                1,
-                                                                default(JobHandle));
-            } else {
-                handleMain = RaycastCommand.ScheduleBatch(raycastCommands[curDivision],
-                                                                raycastHits[curDivision],
-                                                                1,
-                                                                default(JobHandle));
-            }
+            handleMain = RaycastCommand.ScheduleBatch(raycastCommands[curDivision],
+                                                            raycastHits[curDivision],
+                                                            1,
+                                                            default(JobHandle));
             handlePlates = RaycastCommand.ScheduleBatch(raycastCommandsPlates[curDivision],
                                                             raycastHitsPlates[curDivision],
                                                             1,
@@ -244,11 +243,13 @@ namespace Orogeny.Maps {
             var tangentDist = 0f;
             var phi = (1 + Mathf.Sqrt(5)) / 2;
 
-            if (cameraDist > Plate.seaFloorRadius) {
+            if (cameraDist > Plate.seaFloorRadius)
+            {
                 tangentDist = Mathf.Sqrt(cameraDist * cameraDist - Plate.seaFloorRadius * Plate.seaFloorRadius);
             }
 
-            for (int i = 0; i < pointsPerDivision; i++) {
+            for (int i = 0; i < pointsPerDivision; i++)
+            {
                 RaycastHit hit = raycastHits[curDivision][i];
                 var index = curDivision * pointsPerDivision + i;
                 var color = Color.black;
@@ -257,11 +258,15 @@ namespace Orogeny.Maps {
                 {
                     if (hit.collider.name == "EventMORB")
                     {
-                        color = Color.red;
+                        color = Color.deepPink;
                     }
                     else if (hit.collider.name == "EventCollision")
                     {
                         color = Color.blue;
+                    }
+                    else if (hit.collider.name.StartsWith("Hotspot"))
+                    {
+                        color = Color.red;
                     }
                     else
                     {
@@ -270,7 +275,7 @@ namespace Orogeny.Maps {
                         var pointDist = (hit.point - cameraPos).magnitude;
                         color = InterpolateColor(hit.point.magnitude, hit.point);
                         Color.RGBToHSV(color, out var h, out var s, out var v);
-                        float scale = 1.0f - Logistic(0.25f, 1f, 0, pointDist - tangentDist);
+                        float scale = 1.0f - Logistic(0.40f, 1f, 0, pointDist - tangentDist);
                         color = Color.HSVToRGB(h, s, v * scale);
                     }
                 }
@@ -285,7 +290,7 @@ namespace Orogeny.Maps {
                     {
                         var go = hitPlates.collider.gameObject;
                         var plate = go.GetComponent<Plate>();
-                        
+
                         // Golden ratio trick to loop through color space a lot before generating a collision
                         var id = plate.GetPlateNumber();
                         var hue = id * phi - Mathf.Floor(id * phi);
@@ -296,14 +301,18 @@ namespace Orogeny.Maps {
                 }
             }
 
-            for (float lon = -180; lon < 180; lon += 1) {
-                for (float lat = -90; lat < 90; lat += 30) {
+            for (float lon = -180; lon < 180; lon += 1)
+            {
+                for (float lat = -90; lat < 90; lat += 30)
+                {
                     AddGridPoint(lon, lat);
                 }
             }
 
-            for (float lat = -90; lat < 90; lat += 1) {
-                for (float lon = -180; lon < 180; lon += 30) {
+            for (float lat = -90; lat < 90; lat += 1)
+            {
+                for (float lon = -180; lon < 180; lon += 30)
+                {
                     AddGridPoint(lon, lat);
                 }
             }
@@ -319,18 +328,12 @@ namespace Orogeny.Maps {
                 }
 
                 texture.Apply();
-
-                // byte[] bytes = texture.EncodeToPNG();
-                // File.WriteAllBytes("main_map.png", bytes);
-
-                // bytes = texturePlates.EncodeToPNG();
-                // File.WriteAllBytes("main_map_plates.png", bytes);
             }
         }
 
         private void ProcessPlatesMap()
         {
-            var pixels = texturePlates.GetPixelData<Color32>(0);
+            var platePixels = texturePlates.GetPixelData<Color32>(0);
             var width = texturePlates.width;
             var height = texturePlates.height;
 
@@ -353,12 +356,11 @@ namespace Orogeny.Maps {
                                 continue;
                             }
 
-                            var c1 = (Color)pixels[j * width + i];
-                            var c2 = (Color)pixels[(j + jd) * width + i + id];
+                            var c1 = (Color)platePixels[j * width + i];
+                            var c2 = (Color)platePixels[(j + jd) * width + i + id];
                             if (c1 != c2 && c1 != Color.black && c2 != Color.black)
                             {
-                                texture.SetPixel(i, j, Color.red);
-                                break;
+                                texture.SetPixel(i, j, new Color(1f, 0f, 0f, 0.25f));
                             }
                         }
                     }
@@ -378,12 +380,21 @@ namespace Orogeny.Maps {
             }
         }
 
-        public float Logistic(float l, float k, float x0, float x) {
+        public float Logistic(float l, float k, float x0, float x)
+        {
             return l / (1 + Mathf.Exp(-1 * k * (x - x0)));
         }
 
-        public void HandleProjectionSelection(int val) {
-            var startWidth = 400;
+        public void HandleDisplayFeatureChange(int val)
+        {
+            ui.CheckToggles();
+            ResetMap();
+        }
+
+        public void HandleProjectionSelection(int val)
+        {
+            // Width * height must always be divisible by the number of divisions
+            var startWidth = 512;
             var startHeight = texture.height;
 
             curProjection = projections[val];
@@ -392,20 +403,26 @@ namespace Orogeny.Maps {
 
             mapBorder.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Horizontal, width + 10);
             mapBorder.rectTransform.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, height + 10);
-            texture.Reinitialize(width, height);
-            texturePlates.Reinitialize(width, height);
+
+            if (width > 0 && height > 0)
+            {
+                texture.Reinitialize(width, height);
+                texturePlates.Reinitialize(width, height);
+            }
             ResetMap();
 
             Debug.Log("Map resize for " + curProjection.GetName() + ": " + texture.width + " x " + texture.height);
         }
 
-        public void HandlePointerDown(BaseEventData data) {
+        public void HandlePointerDown(BaseEventData data)
+        {
             PointerEventData p = (PointerEventData)data;
             dragOrigin = p.position;
             lonRadOffsetDragStart = lonRadOffset;
         }
 
-        public void HandleDrag(BaseEventData data) {
+        public void HandleDrag(BaseEventData data)
+        {
             PointerEventData p = (PointerEventData)data;
             var pixelDelta = dragOrigin.x - p.position.x;
             var circ = 2 * Mathf.PI;
@@ -416,7 +433,8 @@ namespace Orogeny.Maps {
             ui.SetLonOffset(lonRadOffset * Mathf.Rad2Deg);
         }
 
-        private (bool, Vector3) TranslateCartesian(int i, int j) {
+        private (bool, Vector3) TranslateCartesian(int i, int j)
+        {
             // Convert to geodetic (radians)
             // lonRad [0, 2pi], latRad [-pi/2, pi/2]
 
@@ -424,7 +442,8 @@ namespace Orogeny.Maps {
             bool valid = false;
             (valid, lonRad, latRad) = curProjection.GetGeodeticCoordinates(i, j, texture.width, texture.height);
 
-            if (!valid || float.IsNaN(lonRad) || float.IsNaN(latRad)) {
+            if (!valid || float.IsNaN(lonRad) || float.IsNaN(latRad))
+            {
                 return (false, Vector3.zero);
             }
 
@@ -434,19 +453,21 @@ namespace Orogeny.Maps {
             var x = Mathf.Sin(latRad) * Mathf.Cos(lonRad);
             var y = Mathf.Cos(latRad);
             var z = Mathf.Sin(latRad) * Mathf.Sin(lonRad);
-            
+
             var vector = new Vector3(x, y, z) * 25;
 
             return (true, vector);
         }
 
-        private RaycastCommand GetPointRaycast(Vector3 point, LayerMask mask) {
+        private RaycastCommand GetPointRaycast(Vector3 point, MapType type)
+        {
             // Failing when Z is too close to 0, no clue why
-            if (Mathf.Abs(point.z) < 0.00001) {
+            if (Mathf.Abs(point.z) < 0.00001)
+            {
                 point.z = 0.00001f;
             }
 
-            var qparams = new QueryParameters(mask, true, QueryTriggerInteraction.Ignore, false);
+            var qparams = GetQueryParameters(type);
 
             // Out and then back in to hit the right side of the mesh
             Ray ray = new Ray(Vector3.zero, point);
@@ -456,14 +477,37 @@ namespace Orogeny.Maps {
             return new RaycastCommand(ray.origin, ray.direction, qparams, 50);
         }
 
+        private QueryParameters GetQueryParameters(MapType type)
+        {
+            var mask = LayerMask.GetMask("Plates");
+
+            if (type == MapType.Geoid)
+            {
+                mask = LayerMask.GetMask("Geoid");
+
+                if (ui.IsDisplayFeatureOn(DisplayFeature.EventMarkers))
+                {
+                    mask |= 1 << LayerMask.NameToLayer("EventMarkers");
+                }
+
+                if (ui.IsDisplayFeatureOn(DisplayFeature.Hotspots))
+                {
+                    mask |= 1 << LayerMask.NameToLayer("Hotspots");
+                }
+            }
+
+            return new QueryParameters(mask, true, QueryTriggerInteraction.Ignore, false);
+        }
+
         // Reimplement shader conditional/lerp code
-        private Color InterpolateColor(float elevation, Vector2 point) {
+        private Color InterpolateColor(float elevation, Vector2 point)
+        {
             //Debug.Log(elevation);
 
             if (elevation < blends[0])
                 return GetColor(textColors0, point);
 
-            if (elevation < blends[1]) 
+            if (elevation < blends[1])
                 return Color.Lerp(GetColor(textColors0, point),
                                 GetColor(textColors1, point),
                                 ((elevation - blends[0]) / (blends[1] - blends[0])));
@@ -508,13 +552,14 @@ namespace Orogeny.Maps {
                                 GetColor(textColors6, point),
                                 ((elevation - blends[10]) / (blends[11] - blends[10])));
 
-            return GetColor(textColors6, point); 
+            return GetColor(textColors6, point);
         }
 
-        private Color GetColor(Color[] textColor, Vector2 coords) {
+        private Color GetColor(Color[] textColor, Vector2 coords)
+        {
             var x = Mathf.Abs((int)(coords.x * 512)) % 512;
             var y = Mathf.Abs((int)(coords.y * 512)) % 512;
-            
+
             return textColor[x * 512 + y];
         }
 

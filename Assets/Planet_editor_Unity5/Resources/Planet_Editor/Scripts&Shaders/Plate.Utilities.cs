@@ -11,18 +11,40 @@ namespace Orogeny.Plates {
         Virtual
     }
 
+    public enum SubductionState
+    {
+        None,
+        Adjacent,
+        Initiated,
+        Active
+    }
+
+	public enum PlateMeshDisplayMode
+    {
+        None,
+        Surface,
+        Subducting,
+        Entire
+    }
+
     public partial class Plate
     {
         public static float continentalCrustThickness = 0.75f;
-        public static float hotCrustThicknessBonus = 0.5f;
+        public static float hotCrustThicknessBonus = 0.3f;
         public static float framesToCool = 1000;
 
         public static float seaFloorRadius = 25;
+        public static float seaFloorMinNormalRadius = seaFloorRadius - 0.1f;
+        public static float seaFloorMaxNormalRadius = seaFloorRadius + 0.2f;
         public static float trenchRadius = 24.5f;
         public static float mohoRadius = 18;
         public static float coreRadius = 12;
 
         public static float vertexSquishAllowance = 0.3f;
+
+        // Slab pull should be 85-90% of the forces on a plate, but these values aren't directly comparable that way.
+        public static float slabPullScale = 20.0f;
+        public static float ridgePushScale = 0.40f;
 
         public static float magmatismDepth = seaFloorRadius - 1f;
         public static float magmatismUpperLimit = seaFloorRadius - 2f;
@@ -85,14 +107,34 @@ namespace Orogeny.Plates {
             return sphere;
         }
 
-        public static int FindClosestVertex(Vector3[] vertices, Vector3 point)
+        private static void ClearEvents(List<GameObject> events)
+        {
+            foreach (var e in events)
+            {
+                Destroy(e);
+            }
+
+            events.Clear();
+        }
+
+        public int FindClosestVertex(Vector3 point)
+        {
+            return FindClosest(point, mesh.vertices);
+        }
+
+        public int FindClosestPerimeter(Vector3 point)
+        {
+            return FindClosest(point, perimeter.Select(p => mesh.vertices[p]).ToArray());
+        }
+
+        private int FindClosest(Vector3 point, Vector3[] points)
         {
             var closest = -1;
             var minDist = float.MaxValue;
 
-            for (int i = 0; i < vertices.Length; i++)
+            for (int i = 0; i < points.Length; i++)
             {
-                var dist = (vertices[i] - point).magnitude;
+                var dist = (points[i] - point).magnitude;
                 if (dist < minDist)
                 {
                     closest = i;
@@ -143,24 +185,6 @@ namespace Orogeny.Plates {
             return markers;
         }
 
-        public int FindClosestPerimeter(Vector3 point)
-        {
-            var closest = -1;
-            var minDist = float.MaxValue;
-
-            foreach (var p in perimeter)
-            {
-                var dist = (plateVertices[p] - point).magnitude;
-                if (dist < minDist)
-                {
-                    closest = p;
-                    minDist = dist;
-                }
-            }
-
-            return closest;
-        }
-
         public CrustType GetCrustType(Vector3 vertex)
         {
             if (vertex.magnitude > seaFloorRadius + continentalCrustThickness)
@@ -207,12 +231,7 @@ namespace Orogeny.Plates {
 
         public bool IsSubducting(int v)
         {
-            return !IsVirtual(plateVertices[v]) && vertexSubducting[v];
-        }
-
-        public bool AreAnySubducting(List<int> vertices)
-        {
-            return vertices.Where(v => IsSubducting(v)).Any();
+            return !IsVirtual(plateVertices[v]) && vertexSubductionState[v] == SubductionState.Active;
         }
 
         public bool IsVirtual(Vector3 vertex)
@@ -221,11 +240,9 @@ namespace Orogeny.Plates {
             return sampleType == CrustType.Virtual;
         }
 
-        public Quaternion CreateVertexRotation(Vector3 direction, Vector3 normal, float scale)
+        public bool AreAnySubducting(List<int> vertices)
         {
-            var pivot = Vector3.Cross(normal, direction);
-            var amount = direction.magnitude * scale;
-            return Quaternion.AngleAxis(amount, pivot);
+            return vertices.Where(v => IsSubducting(v)).Any();
         }
 
         // WCS -> local movement CS
@@ -291,7 +308,7 @@ namespace Orogeny.Plates {
             return Quaternion.Inverse(q) * targetP;
         }
 
-        public bool IsOnlyVirtualAtPoint(Vector3 point, MeshCollider localCollider, float radius = 0.5f)
+        public bool IsClearForMORBingAtPoint(Vector3 point, MeshCollider localCollider, float radius = 0.5f)
         {
             Ray ray = new Ray(Vector3.zero, point);
             ray.origin = ray.GetPoint(50);
@@ -302,37 +319,131 @@ namespace Orogeny.Plates {
 
             for (var i = 0; i < hits.Length; i++)
             {
-                // Can't just look at IsVirtual for the hit point, because it might be on the side of a triangle sloping down to the core
-                MeshCollider meshCollider = hits[i].collider as MeshCollider;
-                Mesh mesh = meshCollider.sharedMesh;
-                Vector3[] meshVertices = mesh.vertices;
-                int[] meshTriangles = mesh.triangles;
-
-                var v0 = meshTriangles[hits[i].triangleIndex * 3 + 0];
-                var v1 = meshTriangles[hits[i].triangleIndex * 3 + 1];
-                var v2 = meshTriangles[hits[i].triangleIndex * 3 + 2];
-
-                Vector3 point0 = meshVertices[v0];
-                Vector3 point1 = meshVertices[v1];
-                Vector3 point2 = meshVertices[v2];
-
-                if (hits[i].collider != localCollider && (!IsVirtual(point0) && !IsVirtual(point1) && !IsVirtual(point2)))
+                if (hits[i].collider != localCollider)
                 {
-                    return false;
+                    // Can't just look at IsVirtual for the hit point, because we get a false negative if it is on the side of a triangle sloping down to the core
+                    // If ANY vertex of the hit triangle is virtual, we're good to go
+                    MeshCollider meshCollider = hits[i].collider as MeshCollider;
+                    Mesh mesh = meshCollider.sharedMesh;
+                    Vector3[] meshVertices = mesh.vertices;
+                    int[] meshTriangles = mesh.triangles;
+
+                    var v0 = meshTriangles[hits[i].triangleIndex * 3 + 0];
+                    var v1 = meshTriangles[hits[i].triangleIndex * 3 + 1];
+                    var v2 = meshTriangles[hits[i].triangleIndex * 3 + 2];
+
+                    Vector3 point0 = meshVertices[v0];
+                    Vector3 point1 = meshVertices[v1];
+                    Vector3 point2 = meshVertices[v2];
+
+                    if (!IsVirtual(point0) && !IsVirtual(point1) && !IsVirtual(point2))
+                    {
+                        return false;
+                    }
                 }
             }
 
             return true;
         }
 
-        private static void ClearEvents(List<GameObject> events)
+        // Need to prevent anomalous MORBing from the overriding plate when a spreading ridge is being subducted.
+        // Check a wide spherecast for other plates. If any of them are subducting under this plate, we shouldn't MORB.
+        public bool AreSubductingPlatesNearby(Vector3 point, MeshCollider localCollider, SubductionTracker subductionTracker)
         {
-            foreach (var e in events)
+            Ray ray = new Ray(Vector3.zero, point);
+            ray.origin = ray.GetPoint(50);
+            ray.direction = -ray.direction;
+            var mask = LayerMask.GetMask("Plates");
+
+            var hits = Physics.SphereCastAll(ray, 3.0f, 50 - Plate.mohoRadius, mask);
+
+            for (var i = 0; i < hits.Length; i++)
             {
-                Destroy(e);
+                if (hits[i].collider != localCollider)
+                {
+                    var otherGO = hits[i].collider.gameObject;
+                    var otherPlate = otherGO.GetComponent<Plate>();
+
+                    if (subductionTracker.IsXAlreadySubductingUnderY(otherPlate, this))
+                    {
+                        return true;
+                    }
+                }
             }
 
-            events.Clear();
+            return false;
+        }
+
+        public static void DoRegionalRidgePush(Vector3 point)
+        {
+            Ray ray = new Ray(Vector3.zero, point);
+            ray.origin = ray.GetPoint(50);
+            ray.direction = -ray.direction;
+            var mask = LayerMask.GetMask("Plates");
+
+            var hits = Physics.SphereCastAll(ray, 3.0f, 50 - Plate.mohoRadius, mask);
+
+            for (var i = 0; i < hits.Length; i++)
+            {
+                var go = hits[i].collider.gameObject;
+                var plate = go.GetComponent<Plate>();
+                plate.AddRidgePush(point);
+            }            
+        }
+
+        public (Plate, int, int, int) IsFullyCoveredByOtherPlate(Vector3 point, MeshCollider localCollider, float radius = 0.05f)
+        {
+            Ray ray = new Ray(Vector3.zero, point);
+            ray.origin = ray.GetPoint(50);
+            ray.direction = -ray.direction;
+            var mask = LayerMask.GetMask("Plates");
+
+            var hits = Physics.SphereCastAll(ray, radius, 50 - Plate.mohoRadius, mask);
+
+            for (var i = 0; i < hits.Length; i++)
+            {
+                MeshCollider otherCollider = hits[i].collider as MeshCollider;
+
+                if (otherCollider != localCollider)
+                {
+                    var otherGO = otherCollider.gameObject;
+                    var otherPlate = otherGO.GetComponent<Plate>();
+                    Mesh otherMesh = otherCollider.sharedMesh;
+                    int[] otherTriangles = otherMesh.triangles;
+
+                    var v0 = otherTriangles[hits[i].triangleIndex * 3 + 0];
+                    var v1 = otherTriangles[hits[i].triangleIndex * 3 + 1];
+                    var v2 = otherTriangles[hits[i].triangleIndex * 3 + 2];
+
+                    return (otherPlate, v0, v1, v2);
+                }
+            }
+
+            return (null, -1, -1, -1);
+        }
+
+        public bool IsCoveredBySpecificPlate(Vector3 point, Plate otherPlate)
+        {
+            Ray ray = new Ray(Vector3.zero, point);
+            ray.origin = ray.GetPoint(50);
+            ray.direction = -ray.direction;
+            var mask = LayerMask.GetMask("Plates");
+
+            var hits = Physics.SphereCastAll(ray, 3.0f, 50 - Plate.mohoRadius, mask);
+
+            for (var i = 0; i < hits.Length; i++)
+            {
+                MeshCollider hitCollider = hits[i].collider as MeshCollider;
+                var hitGO = hitCollider.gameObject;
+                var hitPlate = hitGO.GetComponent<Plate>();
+
+                if (hitPlate == otherPlate)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private int ValidNeighborCount(int v)
@@ -366,6 +477,32 @@ namespace Orogeny.Plates {
                         {
                             foundNeighbors[n] = true;
                         }
+                    }
+                }
+            }
+
+            return foundNeighbors.Keys.ToList<int>();
+        }
+
+        public List<int> GetExtendedNeighbors(int startingVertex, int depth)
+        {
+            return GetExtendedNeighbors(new List<int>(startingVertex), depth);
+        }
+
+        public List<int> GetExtendedNeighbors(List<int> startingVertices, int depth)
+        {
+            var foundNeighbors = new Dictionary<int, bool>();
+            startingVertices.ForEach(v => foundNeighbors.Add(v, true));
+
+            for (var i = 0; i < depth; i++)
+            {
+                var prevs = foundNeighbors.Keys.ToList<int>();
+
+                foreach (var v in prevs)
+                {
+                    foreach (var n in neighbors[v])
+                    {
+                        foundNeighbors[n] = true;
                     }
                 }
             }
@@ -418,17 +555,6 @@ namespace Orogeny.Plates {
             return subductings;
         }
 
-        private void CheckNeighborPerimeterStatus(int v)
-        {
-            foreach (var n in neighbors[v])
-            {
-                if (InvalidNeighborCount(n) == 0)
-                {
-                    RemoveFromPerimeter(n);
-                }
-            }
-        }
-
         private void AddToPerimeter(int v)
         {
             perimeter.Add(v);
@@ -468,12 +594,60 @@ namespace Orogeny.Plates {
             }
         }
 
-        private void RemoveReal(int v)
+        public List<int> GetReal()
+        {
+            return realVertices;
+        }
+
+        public void AddReal(int v)
+        {
+            if (!realVertices.Contains(v))
+            {
+                realVertices.Add(v);
+            }
+        }
+
+        public void RemoveReal(int v)
         {
             if (realVertices.Contains(v))
             {
                 realVertices.Remove(v);
             }
+        }
+
+        public void ResurrectVertex(int v)
+        {
+            plateVertices[v] = vertexHomes[v] * (GetBumpyNewCrust() + Plate.hotCrustThicknessBonus);
+            mesh.uv2[v] = new Vector2(plateRenderCount, plateRenderCount);
+            vertexSubductionState[v] = SubductionState.None;
+            realVertices.Add(v);
+            CheckForPerimeterness(v);
+            CheckNeighborsForPerimeterness(v);
+
+            mesh.vertices = plateVertices;
+        }
+
+        public List<int> GetNonPerimeterNeighbors(int v)
+        {
+            return GetNonPerimeterNeighbors(new List<int> { v });
+        }
+
+        public List<int> GetNonPerimeterNeighbors(List<int> targets)
+        {
+            var found = new Dictionary<int, bool>();
+
+            foreach (var v in targets)
+            {
+                foreach (var n in neighbors[v])
+                {
+                    if (realVertices.Contains(n) && !perimeter.Contains(n) && vertexSubductionState[n] != SubductionState.Active)
+                    {
+                        found[n] = true;
+                    }
+                }
+            }
+
+            return found.Keys.ToList();
         }
 
         public float GetVertexSquishedness(int v)
@@ -492,27 +666,121 @@ namespace Orogeny.Plates {
         {
             var diff = squishAway ? plateVertices[v] - pointOfContact : pointOfContact - plateVertices[v];
             plateVertices[v] = (plateVertices[v] + diff).normalized * plateVertices[v].magnitude;
+
             mesh.vertices = plateVertices;
-            mesh.RecalculateBounds();
+            mesh.RecalculateBounds();            
         }
 
-        public Mesh TearOffSubductingVertices()
+        public void DoMassSlumping(List<int> targets, Quaternion q)
+        {
+            for (var i = 0; i < targets.Count(); i++)
+            {
+                var v = targets[i];
+
+                // Subaerial vs submarine angle of repose
+                var aor = plateVertices[v].magnitude > 25.9 ? 25 : 40;
+
+                // Find next position of the target after another application of plate movement
+                var targetPrime = q * plateVertices[v];
+                var targetDelta = (targetPrime - plateVertices[v]).magnitude;
+
+                // Find the lowest neighbor, plus directional groupings while we're at it
+                var maxDiff = 0.0f;
+                var lowestIndex = -1;
+                var aheadVertices = new List<int>();
+                var sideVertices = new List<int>();
+                foreach (var n in neighbors[v])
+                {
+                    // Don't let subducting/subducted vertices influence the surplus elevation calcs
+                    if (!realVertices.Contains(n) || vertexSubductionState[n] != SubductionState.None)
+                    {
+                        continue;
+                    }
+
+                    var diff = plateVertices[v].magnitude - plateVertices[n].magnitude;
+                    if (diff > maxDiff)
+                    {
+                        maxDiff = diff;
+                        lowestIndex = n;
+                    }
+
+                    // Include perimeter for surplus elevation calcs, but not for mass redistribution
+                    if (IsPerimeterVertex(n))
+                    {
+                        continue;
+                    }
+
+                    // Compare this neighbor with the target/targetPrime to see how inline it is with collisional movement
+                    var dist = (plateVertices[v] - plateVertices[n]).magnitude;
+                    var distPrime = (targetPrime - plateVertices[n]).magnitude;
+                    var distDelta = dist - distPrime; // Positive means target is moving towards this vertex
+
+                    // Greatest possible movement is targetDelta, directly inline with plate motion
+                    if (distDelta > targetDelta * 0.5f)
+                    {
+                        aheadVertices.Add(n);
+                    }
+                    else if (distDelta > -targetDelta * 0.5f)
+                    {
+                        sideVertices.Add(n);
+                    }
+                }
+
+                // The target might be the lowest in the area
+                if (lowestIndex < 0)
+                {
+                    continue;
+                }
+
+                // Calculate how much has to be moved to maintain aor to lowest neighbor
+                var lowestDist = (plateVertices[v].normalized * seaFloorRadius - plateVertices[lowestIndex].normalized * seaFloorRadius).magnitude;
+                var highestAllowed = Mathf.Tan(aor * Mathf.Deg2Rad) * lowestDist + plateVertices[lowestIndex].magnitude;
+                var surplusElevation = plateVertices[v].magnitude - highestAllowed;
+
+                if (surplusElevation < 0)
+                {
+                    continue;
+                }
+                plateVertices[v] = plateVertices[v].normalized * (plateVertices[v].magnitude - surplusElevation);
+
+                // Divy up the surplus elevation, giving most to the neighbors ahead in plate motion, some to the ones on the side, and none behind
+                foreach (var n in aheadVertices)
+                {
+                    var aheadShare = surplusElevation * 0.25f / aheadVertices.Count();
+                    plateVertices[n] = plateVertices[n].normalized * (plateVertices[n].magnitude + aheadShare);
+                    if (!targets.Contains(n))
+                        targets.Add(n);
+                }
+
+                foreach (var n in sideVertices)
+                {
+                    var sideShare = surplusElevation * 0.75f / sideVertices.Count();
+                    plateVertices[n] = plateVertices[n].normalized * (plateVertices[n].magnitude + sideShare);
+                    if (!targets.Contains(n))
+                        targets.Add(n);
+                }
+            }
+
+            mesh.vertices = plateVertices;
+        }
+
+        public Mesh TearOffSubductingVertices(Plate overPlate)
         {
             var newMesh = CloneMesh(mesh);
             var newPlateVertices = newMesh.vertices;
 
             for (int v = 0; v < mesh.vertices.Length; v++)
             {
-                if (IsSubducting(v))
+                if ((vertexSubductionState[v] == SubductionState.Initiated || vertexSubductionState[v] == SubductionState.Active) && IsCoveredBySpecificPlate(mesh.vertices[v], overPlate))
                 {
                     RemoveReal(v);
                     RemoveFromPerimeter(v);
-                    plateVertices[v] = vertexHomes[v].normalized * coreRadius;
-                    newPlateVertices[v] = vertexHomes[v].normalized * newPlateVertices[v].magnitude;
+                    vertexSubductionState[v] = SubductionState.None;
+                    plateVertices[v] = vertexHomes[v] * coreRadius;
                 }
                 else
                 {
-                    newPlateVertices[v] = vertexHomes[v].normalized * coreRadius;
+                    newPlateVertices[v] = vertexHomes[v] * coreRadius;
                 }
             }
 
@@ -520,6 +788,7 @@ namespace Orogeny.Plates {
             mesh.RecalculateBounds();
             newMesh.vertices = newPlateVertices;
             newMesh.RecalculateBounds();
+
             return newMesh;
         }
 
@@ -546,7 +815,7 @@ namespace Orogeny.Plates {
             newMesh.tangents = _mesh.tangents;
             newMesh.uv = _mesh.uv;
             newMesh.uv2 = _mesh.uv2;
-            return newMesh;           
+            return newMesh;
         }
-   }
+    }
 }

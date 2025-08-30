@@ -5,7 +5,7 @@ Shader "Custom/Wireframe"
         _MainTex ("Texture", 2D) = "white" {}
         _WireframeColor("Wireframe front colour", color) = (1.0, 1.0, 1.0, 1.0)
         _WireframeWidth("Wireframe Width", float) = 0.05
-        _CullRadius("Culling radius", float) = 22.0
+        _CullRadius("Culling radius", float) = 13.0
         _SeaLevel("Top of the water sphere", float) = 26.0
     }
 
@@ -65,19 +65,22 @@ Shader "Custom/Wireframe"
             [maxvertexcount(3)]
             void geom(triangle v2f IN[3], inout TriangleStream<g2f> triStream) {
                 bool hidden = false;
-                if (IN[0].col.x <= _CullRadius && IN[1].col.x <= _CullRadius && IN[2].col.x <= _CullRadius) {
+                if (IN[0].col.x < _CullRadius || IN[1].col.x < _CullRadius || IN[2].col.x <= _CullRadius) {
                     hidden = true;
                 }
 
                 g2f o;
+
                 o.pos = IN[0].vertex;
                 o.barycentric = hidden ? float3(0.5, 0.5, 0.5) : float3(1.0, 0.0, 0.0);
                 o.col = IN[0].col;
                 triStream.Append(o);
+
                 o.pos = IN[1].vertex;
                 o.barycentric = hidden ? float3(0.5, 0.5, 0.5) : float3(0.0, 1.0, 0.0);
                 o.col = IN[1].col;
                 triStream.Append(o);
+
                 o.pos = IN[2].vertex;
                 o.barycentric = hidden ? float3(0.5, 0.5, 0.5) : float3(0.0, 0.0, 1.0);
                 o.col = IN[2].col;
@@ -93,16 +96,20 @@ Shader "Custom/Wireframe"
             {
                 // Find the barycentric coordinate closest to the edge.
                 float closest = min(i.barycentric.x, min(i.barycentric.y, i.barycentric.z));
+                // Scale line width comparison by distance
                 float delta = fwidth(closest);
                 closest = smoothstep(0.5*delta, 1.5*delta, closest);
                 // Set alpha to 1 if within the threshold, else 0.
                 float alpha = step(closest, _WireframeWidth);
 
+                // Set alpha to 1 if we're outside of the cull radius, else 0
                 if (alpha != 0) {
                     alpha = step(_CullRadius, i.col.x);
                 }
 
-                alpha *= i.col.x >= _SeaLevel ? 0.75 : 0.4;
+                // Highlight sections of the mesh above sealevel
+                //alpha *= i.col.x >= _SeaLevel ? 0.75 : 0.4;
+                alpha *= i.col.x >= 24.5 ? 0.4 : 0.75;
 
                 // Set to our backwards facing wireframe colour.
                 return fixed4(_WireframeColor.r, _WireframeColor.g, _WireframeColor.b, alpha);

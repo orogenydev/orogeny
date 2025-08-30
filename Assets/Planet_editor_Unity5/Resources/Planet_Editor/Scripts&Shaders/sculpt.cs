@@ -8,7 +8,6 @@ using UnityEngine.UI;
 using Unity.Collections;
 using Unity.Jobs;
 
-
 using Orogeny.Convection;
 using Orogeny.Maps;
 using Orogeny.Meshes;
@@ -16,6 +15,19 @@ using Orogeny.Plates;
 using Orogeny.Hotspots;
 
 namespace Orogeny {
+    enum Phase
+    {
+        Tectonic = 0,
+        Tectonic2 = 1,
+        Tectonic3 = 2,
+        Subduction = 3,
+        Volcanism = 4,
+        MORB = 5,
+        Erosion = 6,
+        Trim = 7,
+        Shrinkwrap = 8
+    }
+
     public class sculpt : MonoBehaviour
     {
         public Shader without_light;
@@ -35,7 +47,7 @@ namespace Orogeny {
         public float radiusWaterBottom2 = 25.6f;
 
         // Water
-        public float radiusWaterTop = 25.9f;
+        public float radiusWaterTop = 25.9f; // When eventually making sea level variable, adjust all of these together
         // Water/sand blend
         public float radiusSandBottom = 26.1f;
         // Sand
@@ -59,32 +71,19 @@ namespace Orogeny {
         private UserInterface ui;
         private System.Random rand;
 
-        private enum Phase
-        {
-            Tectonic = 0,
-            Tectonic2 = 1,
-            Tectonic3 = 2,
-            PerimeterCheck = 3,
-            Volcanism = 4,
-            MORB = 5,
-            Erode = 6,
-            Trim = 7,
-            Shrinkwrap = 8
-        }
-
         private Vector3[] planetVertices;
+        private Dictionary<int, List<int>> planetNeighbors;
         private List<Plate> plates = new List<Plate>();
         private int curPlate = 0;
         private Plate[] curPlateOrder;
         private Phase curPhase = Phase.Tectonic;
-        public Convector convector;
         private List<Hotspot> hotspots = new List<Hotspot>();
+        private SubductionTracker subductionTracker = new SubductionTracker();
 
         private int nextPlateNumber = 0;
         private List<Color> colors = new List<Color>();
+        private int renderCount = 0;
 
-        private NativeArray<RaycastCommand> raycastCommandsTectonics;
-        private NativeArray<RaycastHit> raycastHitsTectonics;
         private NativeArray<RaycastCommand> raycastCommandsShrinkwrap;
         private NativeArray<RaycastHit> raycastHitsShrinkwrap;
 
@@ -113,9 +112,6 @@ namespace Orogeny {
             var mesh = planet.GetComponent<MeshFilter>().mesh;
             mesh.MarkDynamic();
 
-            convector = new Convector(Plate.seaFloorRadius);
-
-            InitializeTectonics();
             InitializeShrinkwrap();
 
             UpdatePlanetTextures();
@@ -161,24 +157,23 @@ namespace Orogeny {
             if (json == null)
             {
                 var icosphere = IcoSphereCreator.Create(32, Plate.coreRadius);
-                //var icosphere = IcoSphereCreator.Create(4, Plate.coreRadius);
 
-                AddPlate(0, 0, 5f, 3.0f, icosphere);
-                AddPlate(180, 0, 5f, 2.0f, icosphere);
+                // AddPlate(-0, 0, 5f, 3.0f, icosphere);
+                // AddPlate(90, 0, 5f, 3.0f, icosphere);
+                // AddPlate(-90, 0, 5f, 3.0f, icosphere);
+                // AddPlate(180, 0, 5f, 2.0f, icosphere);
+                // AddPlate(0, 90, 5f, 3.0f, icosphere);
+                // AddPlate(0, -90, 5f, 3.0f, icosphere);
 
-                // AddPlate(120, 0, 15f, 1.5f, icosphere);
-                // AddPlate(-180, 0, 15f, 1.0f, icosphere);
+                for (var i = 0; i < Random.Range(8, 12); i++)
+                {
+                    var lon = Random.Range(-180, 180);
+                    var lat = Random.Range(-90, 90);
+                    var size = Random.Range(1, 8);
+                    var height = Random.Range(1, 3);
 
-                // AddPlate(-120, 0, 15f, 1.5f, icosphere);
-                // AddPlate(-45, 0, 5f, -1.0f, icosphere);
-
-                // AddPlate(0, 60, 15f, 1.0f, icosphere);
-                // AddPlate(120, 60, 15f, 1.0f, icosphere);
-                // AddPlate(-120, 60, 15f, 1.0f, icosphere);
-
-                // AddPlate(0, -60, 15f, 1.0f, icosphere);
-                // AddPlate(120, -60, 15f, 1.0f, icosphere);
-                // AddPlate(-120, -60, 15f, 1.0f, icosphere);
+                    AddPlate(lon, lat, size, height, icosphere);
+                }
 
                 ExpandNewPlates();
             }
@@ -194,6 +189,8 @@ namespace Orogeny {
                     AddPlate(plateNumber, name, color, MeshUtils.MeshUndump(meshString));
                 }
             }
+
+            AddTestingFeatures();
 
             FinalizePlates();
         }
@@ -230,20 +227,19 @@ namespace Orogeny {
         private void ExpandNewPlates()
         {
             var more = true;
-            var count = 0;
 
             while (more)
             {
                 more = false;
                 foreach (var plate in plates)
                 {
-                    if (plate.GetPlateNumber() == 0 && count > 10)
-                    {
-                        continue;
-                    }
                     more |= plate.ExpandCrust(plates);
                 }
-                count++;
+            }
+
+            foreach (var plate in plates)
+            {
+                plate.InitializeStuff();
             }
         }
 
@@ -255,100 +251,215 @@ namespace Orogeny {
             }
         }
 
-        private void InitializeTectonics()
+        private void AddTestingFeatures()
         {
-            var mesh = convector.GetMesh();
-            var mask = LayerMask.GetMask("Plates");
-            var qparams = new QueryParameters(mask, true, QueryTriggerInteraction.Ignore, false);
-
-            raycastCommandsTectonics = new NativeArray<RaycastCommand>(mesh.vertices.Length, Allocator.Persistent);
-            raycastHitsTectonics = new NativeArray<RaycastHit>(mesh.vertices.Length, Allocator.Persistent);
-
-            for (int i = 0; i < mesh.vertices.Length; i++)
+            for (var i = 0; i < plates.Count; i++)
             {
-                // Raycast out from origin through that vertex
-                // Except rays won't hit the wrong sides of meshes, so we need to flip it around
-                Ray ray = new Ray(Vector3.zero, mesh.vertices[i]);
-                ray.origin = ray.GetPoint(50);
-                ray.direction = -ray.direction;
-                raycastCommandsTectonics[i] = new RaycastCommand(ray.origin, ray.direction, qparams, 50 - Plate.mohoRadius);
+                var p = plates[i];
+                var reals = p.GetReal();
+                var center = reals[Random.Range(0, reals.Count())];
+                var size = Random.Range(3, 12);
+                var height = Random.Range(1, 3);
+
+                p.AddBump(center, size, height);
             }
         }
 
-        private void TectonicAllThePlates()
+        private void LoadHotspots(JSONObject json = null)
         {
-            // Need to sum all the forces
-            // For every convection vertex
-            // Raycast out and back to see if it hits a plate
-            // Sum the forces for each plate
-
-            JobHandle handle = RaycastCommand.ScheduleBatch(raycastCommandsTectonics,
-                                                            raycastHitsTectonics,
-                                                            1,
-                                                            default(JobHandle));
-            handle.Complete();
-
-            foreach (Plate p in plates)
+            foreach (var hotspot in hotspots)
             {
-                p.ClearNetForce();
+                Destroy(hotspot.gameObject);
+                Destroy(hotspot);
             }
 
-            var normals = convector.GetMesh().normals;
-            for (int i = 0; i < normals.Length; i++)
+            hotspots = new List<Hotspot>();
+
+            if (json == null)
             {
-                RaycastHit hit = raycastHitsTectonics[i];
+                var pos = Random.onUnitSphere;
+                AddHotspot(pos);
 
-                if (hit.collider != null)
+                for (var i = 0; i < Random.Range(2, 4); i++)
                 {
-                    var otherGO = hit.collider.gameObject;
-                    var p = otherGO.GetComponent<Plate>();
-
-                    if (p != null)
+                    pos = Random.onUnitSphere;
+                    while (Hotspot.DistanceToClosestHotspot(pos, hotspots) < 0.5f)
                     {
-                        p.AddForce(hit.point, normals[i]);
+                        pos = Random.onUnitSphere;
                     }
+
+                    AddHotspot(pos);
                 }
             }
-
-            // Check for tearing
-            var plate = plates[curPlate];
-            var force = plate.GetScaledNetForce();
-            var angle = Vector3.SignedAngle(force, plate.GetPrevScaledNetForce(), Vector3.up);
-            plate.UpdatePrevScaledNetForce();
-
-            // Maybe make this more nuanced eventually, but for now, just tear off
-            // ALL subducting vertices on a sufficiently large angle change
-            if (Mathf.Abs(angle) > 10)
+            else
             {
-                var newMesh = plate.TearOffSubductingVertices();
-                var newPlate = AddPlate(nextPlateNumber, $"{plate.name} tear", colors[(nextPlateNumber * 3) % colors.Count], newMesh);
-                newPlate.SetPlateRenderCount(plate.GetPlateRenderCount());
-                newPlate.gameObject.layer = LayerMask.NameToLayer("TornPlates");
-                newPlate.Finalize(wireframe);
-
-                for (int v = 0; v < newPlate.mesh.vertices.Length; v++)
+                foreach (var hotspot in json)
                 {
-                    if (plate.IsSubducting(v))
-                    {
-                        plate.vertexSubducting[v] = false;
-                        newPlate.vertexSubducting[v] = true;
-                    }
+                    var x = hotspot["position"]["x"].floatValue;
+                    var y = hotspot["position"]["y"].floatValue;
+                    var z = hotspot["position"]["z"].floatValue;
+                    AddHotspot(new Vector3(x, y, z));
                 }
             }
         }
 
-        private void TectonicAllThePlates2()
+        private void AddHotspot(float _lon, float _lat)
+        {
+            var lon = _lon + hackyLongitudeAdjustement;
+            var position = MapProjection.Geodetic2Vector(lon, _lat);
+            AddHotspot(position);
+        }
+
+        private void AddHotspot(Vector3 _position)
+        {
+            var position = _position.normalized * Plate.magmatismDepth;
+            var name = $"Hotspot {hotspots.Count}";
+            var gameObject = new GameObject(name);
+            var hotspot = gameObject.AddComponent<Hotspot>();
+            hotspot.Initialize(position, name);
+            hotspots.Add(hotspot);
+        }
+
+        private (Plate, int) FindNearestAlienPerimeterVertex(Plate myPlate, Vector3 point)
+        {
+            Plate nearestPlate = null;
+            int nearestVertex = -1;
+            float nearestDist = float.MaxValue;
+
+            foreach (Plate otherPlate in plates)
+            {
+                if (otherPlate != myPlate)
+                {
+                    foreach (var p in otherPlate.GetPerimeter())
+                    {
+                        var dist = (point - otherPlate.GetPlateVertices()[p]).magnitude;
+
+                        if (dist < nearestDist)
+                        {
+                            nearestPlate = otherPlate;
+                            nearestVertex = p;
+                            nearestDist = dist;
+                        }
+                    }
+                }
+            }
+
+            return (nearestPlate, nearestVertex);
+        }
+
+        private void CalculatePlateForces()
+        {
+            var myPlate = plates[curPlate];
+            myPlate.ClearNetForce();
+            myPlate.ClearSubductionPolarityFlippingCollisionCount();
+
+            if (ui.GetPlateForceToggleState())
+            {
+                foreach (var myVertex in myPlate.GetPerimeter())
+                {
+                    var myPoint = myPlate.GetPlateVertices()[myVertex];
+
+                    // Continental crust will never subduct, so there will never be any slab pull coming from it
+                    if (myPlate.IsContinental(myPoint))
+                    {
+                        continue;
+                    }
+
+                    var (otherPlate, otherVertex) = FindNearestAlienPerimeterVertex(myPlate, myPoint);
+                    var otherPoint = otherPlate.GetPlateVertices()[otherVertex];
+
+                    // If they're subducting under us, no slab pull.
+                    if (subductionTracker.IsXAlreadySubductingUnderY(otherPlate, myPlate))
+                    {
+                        continue;
+                    }
+
+                    var myUV = myPlate.GetMesh().uv2[myVertex].x;
+                    var otherUV = otherPlate.GetMesh().uv2[otherVertex].x;
+
+                    if (myUV < otherUV || subductionTracker.IsXAlreadySubductingUnderY(myPlate, otherPlate))
+                    {
+                        // We need the rotation from our point to the other point
+                        var perp = Vector3.Cross(myPoint, otherPoint).normalized;
+
+                        // Scaled by the difference in density
+                        var densityScale = Mathf.Max((otherUV - myUV) / Plate.framesToCool, 1.0f);
+
+                        myPlate.AddForce(perp * densityScale * Plate.slabPullScale);
+                    }
+                }
+            }
+
+            // Ridge push
+            myPlate.ArchiveRecentMORBs();
+            var historicalMORBs = myPlate.GetHistoricalMORBs();
+            foreach (var recents in historicalMORBs)
+            {
+                foreach (var morbPoint in recents)
+                {
+                    // A push coming from morbPoint, in the direction of the nearest perimeter point
+                    // Except the nearest point will frequently be morbPoint!
+                    // So apply it to all its neighbors instead
+                    var v = myPlate.FindClosestPerimeter(morbPoint);
+                    foreach (var n in myPlate.GetValidNeighbors(v, 1))
+                    {
+                        var neighborPoint = myPlate.GetPlateVertices()[n];
+                        var perp = Vector3.Cross(morbPoint, neighborPoint).normalized;
+                        myPlate.AddForce(perp * Plate.ridgePushScale);
+                    }
+                }
+            }
+        }
+
+        private void ApplyForces1()
         {
             var plate = plates[curPlate];
 
             plate.ApplyForces(0);
         }
 
-        private void TectonicAllThePlates3()
+        private void ApplyForces2()
         {
             var plate = plates[curPlate];
 
             plate.ApplyForces(1);
+        }
+
+        private void ApotheosizeTornMeshes()
+        {
+            var myPlate = plates[curPlate];
+            var meshes = myPlate.GetTornMeshes();
+
+            foreach (var mesh in meshes)
+            {
+                var newPlate = AddPlate(nextPlateNumber, $"Plate {nextPlateNumber} ({myPlate.name} tear)", colors[(nextPlateNumber * 3) % colors.Count], mesh);
+                newPlate.SetPlateRenderCount(myPlate.GetPlateRenderCount());
+                newPlate.gameObject.layer = LayerMask.NameToLayer("TornPlates");
+                newPlate.Finalize(wireframe);
+                newPlate.LockScaledNetForce(myPlate.GetScaledNetForce());
+
+                for (int v = 0; v < newPlate.mesh.vertices.Length; v++)
+                {
+                    if (newPlate.mesh.vertices[v].magnitude > Plate.coreRadius)
+                    {
+                        newPlate.vertexSubductionState[v] = SubductionState.Active;
+                        newPlate.AddReal(v);
+                    }
+                }
+                
+            }
+        }
+
+        private void CheckForPlateDeath()
+        {
+            var myPlate = plates[curPlate];
+
+            if (myPlate.GetReal().Count == 0)
+            {
+                plates.Remove(myPlate);
+                Destroy(myPlate.gameObject);
+                Destroy(myPlate);
+            }
         }
 
         private void InitializeShrinkwrap()
@@ -357,6 +468,7 @@ namespace Orogeny {
             var mask = LayerMask.GetMask("Plates");
             var qparams = new QueryParameters(mask, true, QueryTriggerInteraction.Ignore, false);
             planetVertices = mesh.vertices;
+            planetNeighbors = Plate.ExtractNeighbors(mesh);
 
             raycastCommandsShrinkwrap = new NativeArray<RaycastCommand>(planetVertices.Length, Allocator.Persistent);
             raycastHitsShrinkwrap = new NativeArray<RaycastHit>(planetVertices.Length, Allocator.Persistent);
@@ -391,15 +503,8 @@ namespace Orogeny {
 
                 if (hit.collider == null || hit.point.magnitude < Plate.trenchRadius)
                 {
-                    // Computationally cheap hack to try to smooth out gaps between plates
-                    if (i > 0)
-                    {
-                        planetVertices[i] = planetVertices[i].normalized * planetVertices[i - 1].magnitude;
-                    }
-                    else
-                    {
-                        planetVertices[i] = planetVertices[i].normalized * Plate.trenchRadius;
-                    }
+                    var avgHeight = planetNeighbors[i].Select(v => planetVertices[v].magnitude).Average();
+                    planetVertices[i] = planetVertices[i].normalized * avgHeight;
                 }
                 else
                 {
@@ -410,82 +515,38 @@ namespace Orogeny {
             mesh.vertices = planetVertices;
             mesh.RecalculateBounds();
             collider.sharedMesh = null;
-            collider.sharedMesh = mesh; 
+            collider.sharedMesh = mesh;
         }
 
-        private void LoadHotspots(JSONObject json = null)
-        {
-            foreach (var hotspot in hotspots)
-            {
-                Destroy(hotspot.gameObject);
-                Destroy(hotspot);
-            }
+        // public void OnDrawGizmos()
+        // {
+        //     if (ui == null || plates == null)
+        //         return;
 
-            hotspots = new List<Hotspot>();
+        //     if (ui.IsDisplayFeatureOn(DisplayFeature.Convection))
+        //     {
+        //         var convectionMesh = convector.GetMesh();
+        //         var vertices = convectionMesh.vertices;
+        //         var normals = convectionMesh.normals;
 
-            if (json == null)
-            {
-                //AddHotspot(0, 0);
-                //AddHotspot(-90, 0);
-            }
-            else
-            {
-                foreach (var hotspot in json)
-                {
-                    var x = hotspot["position"]["x"].floatValue;
-                    var y = hotspot["position"]["y"].floatValue;
-                    var z = hotspot["position"]["z"].floatValue;
-                    AddHotspot(new Vector3(x, y, z));
-                }
-            }
-        }
+        //         // Don't draw any on the far side of the planet, it just gets confusing
+        //         var cameraPos = Camera.main.transform.position;
+        //         var cameraDist = cameraPos.magnitude;
+        //         var radius = Plate.seaFloorRadius;
+        //         var tangentDist = Mathf.Sqrt(cameraDist * cameraDist - radius * radius);
 
-        private void AddHotspot(float _lon, float _lat)
-        {
-            var lon = _lon + hackyLongitudeAdjustement;
-            var position = MapProjection.Geodetic2Vector(lon, _lat);
-            AddHotspot(position);
-        }
-
-        private void AddHotspot(Vector3 _position)
-        {
-            var position = _position.normalized * Plate.magmatismDepth;
-            var name = $"Hotspot {hotspots.Count}";
-            var gameObject = new GameObject(name);
-            var hotspot = gameObject.AddComponent<Hotspot>();
-            hotspot.Initialize(position, name);
-            hotspots.Add(hotspot);
-        }
-
-        public void OnDrawGizmos()
-        {
-            if (ui == null || plates == null)
-                return;
-
-            if (ui.IsDisplayFeatureOn(DisplayFeature.Convection))
-            {
-                var convectionMesh = convector.GetMesh();
-                var vertices = convectionMesh.vertices;
-                var normals = convectionMesh.normals;
-
-                // Don't draw any on the far side of the planet, it just gets confusing
-                var cameraPos = Camera.main.transform.position;
-                var cameraDist = cameraPos.magnitude;
-                var radius = Plate.seaFloorRadius;
-                var tangentDist = Mathf.Sqrt(cameraDist * cameraDist - radius * radius);
-
-                for (int i = 0; i < vertices.Length; i++)
-                {
-                    var vertex = vertices[i];
-                    var vertexDist = (vertices[i] - cameraPos).magnitude;
-                    if (vertexDist < tangentDist)
-                    {
-                        Gizmos.color = new Color(normals[i].x, normals[i].y, normals[i].z);
-                        Gizmos.DrawLine(vertex, vertex + normals[i]);
-                    }
-                }
-            }
-        }
+        //         for (int i = 0; i < vertices.Length; i++)
+        //         {
+        //             var vertex = vertices[i];
+        //             var vertexDist = (vertices[i] - cameraPos).magnitude;
+        //             if (vertexDist < tangentDist)
+        //             {
+        //                 Gizmos.color = new Color(normals[i].x, normals[i].y, normals[i].z);
+        //                 Gizmos.DrawLine(vertex, vertex + normals[i]);
+        //             }
+        //         }
+        //     }
+        // }
 
         public void Update()
         {
@@ -516,19 +577,27 @@ namespace Orogeny {
                 GetComponent<Camera>().cullingMask &= ~(1 << LayerMask.NameToLayer("EventMarkers"));
             }
 
+            if (ui.IsDisplayFeatureOn(DisplayFeature.Hotspots))
+            {
+                GetComponent<Camera>().cullingMask |= 1 << LayerMask.NameToLayer("Hotspots");
+            }
+            else
+            {
+                GetComponent<Camera>().cullingMask &= ~(1 << LayerMask.NameToLayer("Hotspots"));
+            }
+
             for (var i = 0; i < plates.Count; i++)
             {
-                plates[i].SetMeshDisplay(ui.IsDisplayFeatureOn(DisplayFeature.PlateMeshes) && ui.IsDisplayPlateOn(i));
+                if (ui.IsDisplayFeatureOn(DisplayFeature.PlateMeshes)) {
+                    plates[i].SetMeshDisplay(ui.GetPlateMeshDisplayMode(i));
+                } else {
+                    plates[i].SetMeshDisplay(PlateMeshDisplayMode.None);
+                }
             }
 
             if (ui.IsPlaying())
             {
-                // if (curPhase == 0)
-                // {
-                //     curPlate = (curPlate + 1) % plates.Count;
-                //     curPlateOrder = plates.ToArray().OrderBy(x => rand.Next()).ToArray();
-                // }
-
+                // Randomize the order of plates each time to reduce uneven event distribution when the number of plates evenly divides the number of steps
                 if (curPlate == 0)
                 {
                     curPhase = (Phase)((((int)curPhase) + 1) % ((int)Phase.Shrinkwrap + 1));
@@ -540,25 +609,27 @@ namespace Orogeny {
                     case Phase.Tectonic:
                         if (ui.IsSubsystemFeatureOn(SubsystemFeature.Tectonics))
                         {
-                            TectonicAllThePlates();
+                            CalculatePlateForces();
                         }
                         break;
                     case Phase.Tectonic2:
                         if (ui.IsSubsystemFeatureOn(SubsystemFeature.Tectonics))
                         {
-                            TectonicAllThePlates2();
+                            ApplyForces1();
                         }
                         break;
                     case Phase.Tectonic3:
                         if (ui.IsSubsystemFeatureOn(SubsystemFeature.Tectonics))
                         {
-                            TectonicAllThePlates3();
+                            ApplyForces2();
                         }
                         break;
-                    case Phase.PerimeterCheck:
+                    case Phase.Subduction:
                         if (ui.IsSubsystemFeatureOn(SubsystemFeature.CollisionCheck))
                         {
-                            PlateCollisions.PerimeterCheck(curPlateOrder[curPlate]);
+                            PlateCollisions.SubductionCheck(curPlateOrder[curPlate], subductionTracker);
+                            ApotheosizeTornMeshes();
+                            CheckForPlateDeath();
                         }
                         break;
                     case Phase.Volcanism:
@@ -575,10 +646,10 @@ namespace Orogeny {
                     case Phase.MORB:
                         if (ui.IsSubsystemFeatureOn(SubsystemFeature.MORB))
                         {
-                            curPlateOrder[curPlate].MORBingTime();
+                            curPlateOrder[curPlate].MORBingTime(subductionTracker);
                         }
                         break;
-                    case Phase.Erode:
+                    case Phase.Erosion:
                         if (ui.IsSubsystemFeatureOn(SubsystemFeature.Erosion))
                         {
                             curPlateOrder[curPlate].DoErosion(radiusWaterTop, radiusSnowTop);
@@ -592,9 +663,17 @@ namespace Orogeny {
                         break;
                 }
 
-                curPlate = (curPlate + 1) % plates.Count;
+                curPlate = (curPlate + 1) % curPlateOrder.Count();
+                renderCount++;
+            }
 
-                //curPhase = (Phase)((((int)curPhase) + 1) % ((int)Phase.Shrinkwrap + 1));
+            ui.UpdateTimestamp(renderCount);
+
+            ui.UpdatePlateID();
+
+            if (renderCount % 100 == 0)
+            {
+                //subductionTracker.PrintState();
             }
 
             if (ui.IsFileSaveRequested())
@@ -666,10 +745,9 @@ namespace Orogeny {
             // Keep it right between water top and sand bottom
             water.transform.localScale = Vector3.one * ((radiusWaterTop + radiusSandBottom) / 2 / 25);
         }
-        
-        private void OnDestroy() {
-            raycastCommandsTectonics.Dispose();
-            raycastHitsTectonics.Dispose();
+
+        private void OnDestroy()
+        {
             raycastCommandsShrinkwrap.Dispose();
             raycastHitsShrinkwrap.Dispose();
         }

@@ -21,7 +21,7 @@ namespace Orogeny.Hotspots {
             position = _position;
             name = _name;
 
-            marker = Plate.CreateEventMarker(gameObject, new Color(1.0f, 0f, 0f, 1.0f), position.normalized * 25, 1.0f, "EventMarkers", $"Marker ({name})");
+            marker = Plate.CreateEventMarker(gameObject, Color.red, position.normalized * 25, 2.0f, "Hotspots", name);
         }
 
         public Vector3 GetPosition()
@@ -38,10 +38,13 @@ namespace Orogeny.Hotspots {
             var mask = LayerMask.GetMask("Plates");
 
             Physics.SphereCast(ray, 0.1f, out var hit, 50 - Plate.mohoRadius, mask);
-            curGO = hit.collider.gameObject;
-            curPlate = curGO.GetComponent<Plate>();
 
-            curMagma = curPlate.AddMagma(position, MagmaType.Hotspot);
+            if (hit.collider != null)
+            {
+                curGO = hit.collider.gameObject;
+                curPlate = curGO.GetComponent<Plate>();
+                curMagma = curPlate.AddMagma(position, MagmaType.Hotspot);
+            }
         }
 
         private void KillMagma()
@@ -74,7 +77,20 @@ namespace Orogeny.Hotspots {
             }
         }
 
-        public void OnDestroy() {
+        public static float DistanceToClosestHotspot(Vector3 pos, List<Hotspot> hotspots)
+        {
+            var min = float.MaxValue;
+
+            foreach (var hotspot in hotspots)
+            {
+                min = Mathf.Min(min, (pos.normalized - hotspot.position.normalized).magnitude);
+            }
+
+            return min;
+        }
+
+        public void OnDestroy()
+        {
             Destroy(marker);
         }
     }

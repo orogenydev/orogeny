@@ -5,6 +5,7 @@ using UnityEngine.UI;
 using TMPro;
 
 using Orogeny.Maps;
+using Orogeny.Plates;
 
 namespace Orogeny {
 	public enum SubsystemFeature
@@ -19,7 +20,7 @@ namespace Orogeny {
 
 	public enum Breakpoint {
 		AnyCollision,
-		Subduction,
+		SubductionPolarityFlip,
 		ContinentalSquish,
 		MagmaBirth,
 		MagmaEruption,
@@ -32,7 +33,7 @@ namespace Orogeny {
 		PlateMeshes,
 		PlatePerimeterPoints,
 		EventMarkers,
-		Convection,
+		Hotspots,
 		PlateBoundaries
 	}
 
@@ -40,6 +41,8 @@ namespace Orogeny {
 	{
 		public Transform planet;
 		public TextMeshProUGUI fps;
+		public TextMeshProUGUI timestamp;
+		public TextMeshProUGUI plateID;
 		public TextMeshProUGUI latLon;
 		public UnityEngine.UI.Image playButtonImage;
 		public UnityEngine.UI.Image pauseButtonImage;
@@ -71,7 +74,7 @@ namespace Orogeny {
 		private static UnityEngine.UI.Toggle[] breakpointToggles;
 		private static UnityEngine.UI.Toggle[] displayFeatureToggles;
 
-		private static bool[] displayPlateToggles;
+		private PlateMeshDisplayMode[] plateMeshDisplayModes;
 
 		private int[] lastFrames = new int[5] { 0, 0, 0, 0, 0 };
 
@@ -88,7 +91,7 @@ namespace Orogeny {
 		private string FileSaveName = "";
 		private string FileLoadName = "";
 
-		private bool convectionToggleState = true;
+		private bool plateForceToggleState = true;
 
 
 		void Awake()
@@ -107,7 +110,43 @@ namespace Orogeny {
 				lastFrames[i] = lastFrames[i - 1];
 			}
 			lastFrames[0] = Time.frameCount;
-			fps.text = "FPS: " + (Time.frameCount - lastFrames[4]) / 2.5f;
+			fps.text = $"FPS: {(Time.frameCount - lastFrames[4]) / 2.5f:0}";
+		}
+
+		public void UpdateTimestamp(int renderCount)
+		{
+			if (renderCount < 1000)
+			{
+				timestamp.text = $"{renderCount} Ky";
+			}
+			else if (renderCount < 1000000)
+			{
+				timestamp.text = $"{renderCount / 1000.0:0.000} My";
+			}
+			else
+			{
+				timestamp.text = $"{renderCount / 1000000.0:0.000000} Gy";
+			}
+		}
+
+		public void UpdatePlateID()
+		{
+			var id = "";
+
+			var ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+			var mask = LayerMask.GetMask("Plates");
+			if (Physics.SphereCast(ray, 0.5f, out var hit, Mathf.Infinity, mask))
+			{
+				var go = hit.collider.gameObject;
+				var plate = go.GetComponent<Plate>();
+
+				if (plate is not null)
+				{
+					id = plate.name;
+				}
+			}
+
+			plateID.text = id;
 		}
 
 		void LateUpdate()
@@ -268,10 +307,19 @@ namespace Orogeny {
 																displayFeatureToggle5,
 																displayFeatureToggle6 };
 
-			displayPlateToggles = new bool[] { true, true, true, true, true, true, true, true, true, true };
+			plateMeshDisplayModes = new PlateMeshDisplayMode[] { PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface,
+																	PlateMeshDisplayMode.Surface};
 		}
 
-		private void CheckToggles()
+		public void CheckToggles()
 		{
 			for (var i = 0; i < subsystemFeatureToggles.Length; i++)
 			{
@@ -288,19 +336,43 @@ namespace Orogeny {
 				displayFeatures[i] = displayFeatureToggles[i].isOn;
 			}
 
-			KeyCode[] keycodes = new KeyCode[] { KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6, KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9, KeyCode.Alpha0 };
+			if (Input.GetKeyDown(KeyCode.Space))
+			{
+				SetPlaying(!IsPlaying());
+			}
+
+			KeyCode[] keycodes = new KeyCode[] { KeyCode.Alpha0, KeyCode.Alpha1, KeyCode.Alpha2, KeyCode.Alpha3, KeyCode.Alpha4, KeyCode.Alpha5, KeyCode.Alpha6, KeyCode.Alpha7, KeyCode.Alpha8, KeyCode.Alpha9 };
 			for (var i = 0; i < keycodes.Length; i++)
 			{
 				if (Input.GetKeyDown(keycodes[i]))
 				{
-					displayPlateToggles[i] = !displayPlateToggles[i];
+					if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+					{
+						plateMeshDisplayModes[i] = PlateMeshDisplayMode.None;
+					}
+					else
+					{
+						plateMeshDisplayModes[i] = (PlateMeshDisplayMode)((((int)plateMeshDisplayModes[i]) + 1) % ((int)PlateMeshDisplayMode.Entire + 1));
+					}
 					break;
+				}
+
+				if (Input.GetKeyDown(KeyCode.BackQuote))
+				{
+					if (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift))
+					{
+						plateMeshDisplayModes[i] = PlateMeshDisplayMode.None;
+					}
+					else
+					{
+						plateMeshDisplayModes[i] = PlateMeshDisplayMode.Surface;						
+					}
 				}
 			}
 
 			if (Input.GetKeyDown(KeyCode.F1))
 			{
-				convectionToggleState = !convectionToggleState;
+				plateForceToggleState = !plateForceToggleState;
 			}
 		}
 
@@ -319,12 +391,12 @@ namespace Orogeny {
 			return displayFeatures[(int)gf];
 		}
 
-		public bool IsDisplayPlateOn(int plate)
+		public PlateMeshDisplayMode GetPlateMeshDisplayMode(int plate)
 		{
 			if (plate < 0 || plate > 9)
-				return true;
+				return PlateMeshDisplayMode.Surface;
 
-			return displayPlateToggles[plate];
+			return plateMeshDisplayModes[plate];
 		}
 
 		public bool IsFileSaveRequested()
@@ -388,34 +460,34 @@ namespace Orogeny {
 
 		public void HandleSaveButtonClick()
 		{
-			var path = EditorUtility.SaveFilePanel(
-				"Save simulation state",
-				"",
-				"orogeny.json",
-				"json");
+			// var path = EditorUtility.SaveFilePanel(
+			// 	"Save simulation state",
+			// 	"",
+			// 	"orogeny.json",
+			// 	"json");
 
-			if (path.Length != 0)
-			{
-				FileSaveName = path;
-			}
+			// if (path.Length != 0)
+			// {
+			// 	FileSaveName = path;
+			// }
 		}
 
 		public void HandleLoadButtonClick()
 		{
-			string path = EditorUtility.OpenFilePanel(
-				"Load similation state (current state will be lost)",
-				"",
-				"json");
+			// string path = EditorUtility.OpenFilePanel(
+			// 	"Load similation state (current state will be lost)",
+			// 	"",
+			// 	"json");
 
-			if (path.Length != 0)
-			{
-				FileLoadName = path;
-			}
+			// if (path.Length != 0)
+			// {
+			// 	FileLoadName = path;
+			// }
 		}
 
-		public bool GetConvectionToggleState()
+		public bool GetPlateForceToggleState()
 		{
-			return convectionToggleState;
+			return plateForceToggleState;
 		}
 	}
 }

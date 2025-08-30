@@ -3,17 +3,23 @@ using System.Collections.Generic;
 using UnityEngine;
 
 namespace Orogeny.Plates {
-    public partial class Plate {    
-        private void OceanicContinentCollision(Vector3 point, Plate other) {
+    public partial class Plate {
+        private int subductionPolarityFlippingCollisionCount = 0;
+
+        public void ClearSubductionPolarityFlippingCollisionCount()
+        {
+            subductionPolarityFlippingCollisionCount = 0;
+        }
+
+        private void OceanicContinentCollision(Vector3 point, Plate other)
+        {
             //Debug.Log("O-C");
 
             //ProcessSubduction(point);
-
-            ui.TriggerBreakpoint(Breakpoint.Subduction);
         }
 
         // One of our perimeters has collided
-        private void OceanicOceanicCollision(int v, Plate other, int v0, int v1, int v2)
+        private void OceanicOceanicCollision(int v, Plate other, int v0, int v1, int v2, SubductionTracker subductionTracker)
         {
             //Debug.Log("O-O");
 
@@ -24,24 +30,19 @@ namespace Orogeny.Plates {
             var otherVertices = other.GetValidNeighbors(v0, 3);
             var otherUVMedian = otherVertices.Median(v => other.GetMesh().uv2[v].x);
 
-            // If any of my extended neighbors are subducting, we subduct
-            // If any of their extended neighbors are subducting, let them have it
-            // Other fall back to UV2 plateRenderCount ages
-            if (AreAnySubducting(localVertices) || (!other.AreAnySubducting(otherVertices) && localUVMedian < otherUVMedian))
+            if (subductionTracker.IsXSubductingUnderY(this, other, localVertices, otherVertices, localUVMedian, otherUVMedian))
             {
                 // We subduct
                 if (!IsSubducting(v))
                 {
-                    InitiateSubductionOceanic(v);
+                    InitiateSubductionOceanic(v, other);
                     RemoveFromPerimeter(v);
-
-                    ui.TriggerBreakpoint(Breakpoint.Subduction);
                 }
             }
         }
 
         // One of our triangles has collided
-        private void OceanicOceanicCollision(int v0, int v1, int v2, Plate other, int v)
+        private void OceanicOceanicCollision(int v0, int v1, int v2, Plate other, int v, SubductionTracker subductionTracker)
         {
             //Debug.Log("O-O");
 
@@ -52,7 +53,7 @@ namespace Orogeny.Plates {
             var otherVertices = other.GetValidNeighbors(v, 3);
             var otherUVMedian = otherVertices.Median(v => other.GetMesh().uv2[v].x);
 
-            if (AreAnySubducting(localVertices) || (!other.AreAnySubducting(otherVertices) && localUVMedian < otherUVMedian))
+            if (subductionTracker.IsXSubductingUnderY(this, other, localVertices, otherVertices, localUVMedian, otherUVMedian))
             {
                 // We subduct
 
@@ -61,147 +62,79 @@ namespace Orogeny.Plates {
                 if (!IsSubducting(v0) && !IsSubducting(v1) && !IsSubducting(v2))
                 {
                     var subducted = new List<int>();
-                    SubductIfPerimeter(v0, subducted);
-                    SubductIfPerimeter(v1, subducted);
-                    SubductIfPerimeter(v2, subducted);
+                    SubductIfPerimeter(v0, other, subducted);
+                    SubductIfPerimeter(v1, other, subducted);
+                    SubductIfPerimeter(v2, other, subducted);
 
                     foreach (var s in subducted)
                     {
                         RemoveFromPerimeter(s);
                     }
-
-                    ui.TriggerBreakpoint(Breakpoint.Subduction);
                 }
             }
         }
 
-        private void SubductIfPerimeter(int v, List<int> subducted)
+        // One of our oceanic perimeter points has collided with continental crust
+        private void OceanicContinentCollision(int v, Plate other, int v0, int v1, int v2, SubductionTracker subductionTracker)
+        {
+            //Debug.Log("O-C");
+
+            // Check for subduction polarity change
+            if (!subductionTracker.IsXAlreadySubductingUnderY(this, other))
+            {
+                subductionPolarityFlippingCollisionCount++;
+
+                if (subductionPolarityFlippingCollisionCount > 2)
+                {
+                    subductionTracker.ForceXSubductUnderY(this, other);
+                    var newMesh = other.TearOffSubductingVertices(this);
+                    other.AddTornMesh(newMesh);
+
+                    Debug.Log($"Subduction polarity flip! {GetPlateNumber()} < {other.GetPlateNumber()}");
+                    ui.TriggerBreakpoint(Breakpoint.SubductionPolarityFlip);
+                }
+            }
+
+            if (!IsSubducting(v))
+            {
+                InitiateSubductionOceanic(v, other);
+                RemoveFromPerimeter(v);
+            }
+        }
+
+        private void SubductIfPerimeter(int v, Plate other, List<int> subducted)
         {
             if (perimeter.Contains(v))
             {
-                InitiateSubductionOceanic(v);
+                InitiateSubductionOceanic(v, other);
                 subducted.Add(v);
-            }            
+            }
         }
 
-        public void InitiateSubductionOceanic(int v)
+        public void InitiateSubductionOceanic(int v, Plate other)
         {
             vertexNext[v] = mesh.vertices[v];
-            vertexSubducting[v] = true;
-            vertexActions[v] = Color.white;
             AddToCohort(v, 0);
 
-            plateVertices[v] = plateVertices[v].normalized * (plateVertices[v].magnitude - 0.1f);
+            var firstStep = (seaFloorMaxNormalRadius - trenchRadius) / 3;
+            var secondStep = vertexSubductionState[v] == SubductionState.Adjacent ? 2 * firstStep : 3 * firstStep;
 
-            // Apply trenchiness
+            // Apply final trenchiness, after which any height above trenchRadius should be its original excess above seaFloorMaxNormalRadius
+            plateVertices[v] = vertexHomes[v] * Mathf.Max(plateVertices[v].magnitude - secondStep, trenchRadius);
+
+            vertexSubductionState[v] = SubductionState.Initiated;
+
+            // Apply first trenchiness to untrenched neighbors
             foreach (var n in GetValidNeighbors(v, 1))
             {
-                if (!IsSubducting(n))
+                if (vertexSubductionState[n] == SubductionState.None)
                 {
-                    plateVertices[n] = plateVertices[n].normalized * (plateVertices[n].magnitude - 0.05f);
+                    plateVertices[n] = plateVertices[n].normalized * Mathf.Max(plateVertices[n].magnitude - firstStep, trenchRadius);
+                    vertexSubductionState[n] = SubductionState.Adjacent;
                 }
             }
 
             mesh.vertices = plateVertices;
         }
-
-        /*         private void ProcessSubduction(Vector3 point)
-                {
-                    var subducted = DeformPerimeterOceanic(point);
-                    //PropagateDeformationOceanic();
-
-                    // Once a node has started to subduct, we don't want it to trigger collisions
-                    foreach (var v in subducted)
-                    {
-                        RemoveFromPerimeter(v);
-                    }
-                }
-         */
-
-        /*         public List<int> DeformPerimeterOceanic(Vector3 point)
-                {
-                    List<int> subducted = new List<int>();
-                    var scale = 1f * collisionForce.magnitude;
-                    var threshold = 2.5f;
-
-                    foreach (int v in GetExtendedPerimeter(0))
-                    { // Should this be all vertices?
-                      //for (int v = 0; v < mesh.vertices.Length; v++) {
-                        var vertex = mesh.vertices[v];
-                        var normal = mesh.normals[v];
-                        var dist = (vertex - point).magnitude;
-
-                        if (dist < threshold && !IsVertexAhead(collisionForce, vertex, point, point, 2.5f))
-                        {
-                            var adjustedScale = -scale / (1f + (dist));
-                            //vertexNext[v] = Elevate(collisionForce, vertex, normal, adjustedScale);
-                            //vertexNext[v] = Vector3.Scale(vertex, new Vector3(0.95f, 0.95f, 0.95f));
-                            vertexNext[v] = vertex;
-                            vertexSubducting[v] = true;
-                            vertexActions[v] = Color.white;
-                            AddToCohort(v, 0);
-
-                            subducted.Add(v);
-                        }
-                    }
-
-                    return subducted;
-                }
-         */
-
-        public void PropagateDeformationOceanic()
-        {
-            var pushdownDiscount = 0.9f;
-            var threshold = 0.005f;
-            var normals = mesh.normals;
-            var cohort = 0;
-
-            while (cohort < modificationCohorts.Count)
-            {
-                foreach (var v in modificationCohorts[cohort])
-                {
-                    vertexPrev[v] = plateVertices[v];
-                    var newVertex = vertexNext[v];
-                    var newNormal = newVertex.normalized;
-
-                    var q = WCS2MovementCS(collisionForce, newNormal);
-                    var rotatedOld = q * plateVertices[v];
-                    var rotatedNew = q * newVertex;
-
-                    var distDown = rotatedOld.y - rotatedNew.y;
-
-                    foreach (var n in neighbors[v])
-                    {
-                        if (IsInAnyCohort(n))
-                        {
-                            continue;
-                        }
-
-                        vertexActions[n] = Color.yellow;
-
-                        if (distDown > threshold)
-                        {
-                            if (IsVertexAhead(collisionForce, plateVertices[n], newVertex, newNormal) &&
-                                !IsVirtual(plateVertices[n]))
-                            {
-                                // Push down everything (that isn't virtual) ahead of us
-                                vertexNext[n] = Elevate(collisionForce, plateVertices[n], normals[n], -distDown * pushdownDiscount);
-                                vertexActions[n] = Color.grey;
-                                AddToCohort(n, cohort + 1);
-                            }
-                        }
-                    }
-
-                    plateVertices[v] = newVertex;
-                    normals[v] = newNormal;
-                }
-
-                cohort++;
-            }
-
-            mesh.vertices = plateVertices;
-            mesh.normals = normals;
-            mesh.RecalculateBounds();
-        }
-   }
+    }
 }

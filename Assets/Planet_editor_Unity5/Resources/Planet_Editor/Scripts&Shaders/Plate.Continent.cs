@@ -23,22 +23,21 @@ namespace Orogeny.Plates {
         }
 
         public void DeformPerimeterContinent(Vector3 point) {
-            var scale = 0.1f * collisionForce.magnitude;
-            var threshold = 1.5f;
+            // var scale = 0.1f * collisionForce.magnitude;
+            // var threshold = 1.5f;
 
-            foreach(int v in perimeter) {
-                var vertex = mesh.vertices[v];
-                var normal = mesh.normals[v];
-                var dist = (vertex - point).magnitude;
+            // foreach(int v in perimeter) {
+            //     var vertex = mesh.vertices[v];
+            //     var normal = mesh.normals[v];
+            //     var dist = (vertex - point).magnitude;
                 
-                if (dist < threshold) {
-                    var adjustedScale = scale / (1f + (dist * dist));
-                    var q = CreateVertexRotation(-collisionForce, normal, adjustedScale);
-                    vertexNext[v] = q * vertex;
-                    vertexActions[v] = Color.white;
-                    AddToCohort(v, 0);
-                }
-            }
+            //     if (dist < threshold) {
+            //         var adjustedScale = scale / (1f + (dist * dist));
+            //         var q = CreateVertexRotation(-collisionForce, adjustedScale);
+            //         vertexNext[v] = q * vertex;
+            //         AddToCohort(v, 0);
+            //     }
+            // }
         }
 
         public void PropagateDeformationContinent() {
@@ -70,26 +69,21 @@ namespace Orogeny.Plates {
                         if (IsInAnyCohort(n)) {
                             continue;
                         }
-                        
-                        vertexActions[n] = Color.yellow;
-                        
+                                                
                         if (distBack > threshold) {
                             if (IsVertexAhead(collisionForce, plateVertices[n], newVertex, newNormal)) {
                                 // If we've passed any, drag them back to the line of scrimage
                                 var discount = perimeter.Contains(n) ? pullbackDiscount : 1.0f;
                                 vertexNext[n] = ProjectBack(collisionForce, plateVertices[n], newVertex, newNormal, discount);
-                                vertexActions[n] = Color.red;
                                 AddToCohort(n, cohort + 1);
                             } else {
                                 // Lever the ones still behind us up
                                 vertexNext[n] = Elevate(collisionForce, plateVertices[n], normals[n], distBack);
-                                vertexActions[n] = Color.cyan;
                                 AddToCohort(n, cohort + 1);
                             }
                         } else if (distUp > threshold) {
                             // Pull them up
                             vertexNext[n] = Elevate(collisionForce, plateVertices[n], normals[n], distUp * liftDiscount);
-                            vertexActions[n] = Color.grey;
                             AddToCohort(n, cohort + 1);
                         }
                     }
